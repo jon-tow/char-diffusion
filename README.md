@@ -1,1 +1,1 @@
-# token-diffusion
+# char-diffusion
