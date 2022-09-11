@@ -93,6 +93,34 @@ def cosine_alpha_bar_schedule(
     return scheduler
 
 
+def sqrt_alpha_bar(
+    time: float,
+    # max_time: int,  # Use if time is NOT in [0, 1)
+    offset: Optional[float] = 1e-4,
+):
+    """Square-root noise schedule - useful for language modeling.
+
+    Reference: Li et al. "Diffusion-LM Improves Controllable Text Generation"
+        2022. https://arxiv.org/pdf/2205.14217.pdf#page=15
+
+    Args:
+        time: Continous time-step in [0, 1)
+        offset: Start noise level.
+    """
+    # Normalize if your input is not in [0, 1)
+    # return 1.0 - jnp.sqrt((time / max_time) + offset)
+    return 1.0 - jnp.sqrt(time + offset)
+
+
+def sqrt_alpha_bar_schedule(
+    offset: Optional[float] = 1e-4,
+) -> Array:
+    def scheduler(num_steps: float):
+        return sqrt_alpha_bar(time=num_steps, offset=offset)
+
+    return scheduler
+
+
 # Diffusion
 
 

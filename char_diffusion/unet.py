@@ -17,9 +17,7 @@ from custom_layers import Conv1d, GroupNorm, Linear
 
 DType = NewType("DType", jax.numpy.dtype)
 Shape = NewType("Shape", Tuple[int, ...])
-# Array = NewType("Array", jax._src.numpy.ndarray.ndarray)
 PRNGKey = NewType("PRNGKey", jax._src.prng.PRNGKeyArray)
-Initializer = NewType("Initializer", Callable[[PRNGKey, Shape, DType], Array])
 
 
 class SiLU(Module):
