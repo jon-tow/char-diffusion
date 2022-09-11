@@ -2,10 +2,11 @@
 from typing import *
 from jaxtyping import Float, Array
 
+import math
 import jax
 import jax.numpy as jnp
 
-from equinox.nn import Module, static_field
+from equinox import Module, static_field
 
 
 PRNGKey = NewType("PRNGKey", jax._src.prng.PRNGKeyArray)

@@ -10,8 +10,8 @@ from equinox import Module
 from functools import partial
 from einops import rearrange
 
-from custom_layers import left_broadcast_to
-from losses import mse
+from .custom_layers import left_broadcast_to
+from .losses import mse
 
 
 PRNGKey = NewType("PRNGKey", jax._src.prng.PRNGKeyArray)

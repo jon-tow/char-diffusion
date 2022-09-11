@@ -12,7 +12,7 @@ from equinox import Module, static_field
 from functools import partial
 from einops import rearrange
 
-from custom_layers import Conv1d, GroupNorm, Linear
+from .custom_layers import Conv1d, GroupNorm, Linear
 
 
 DType = NewType("DType", jax.numpy.dtype)
@@ -175,28 +175,19 @@ class SinusoidalTimeEmbedding(Module):
         return signal
 
 
-class TimeConditionalEmbedding(Module):
-    time_embed: Module
-    proj1: Module
-    proj2: Module
-    act: Module
-    in_channels: int = static_field()
-    time_channels: int = static_field()
-
-    def __init__(self, in_channels: int, *, key: PRNGKey):
-        key, tlin1_key, tlin2_key = jax.random.split(key, 3)
-        self.in_channels = in_channels
-        self.time_channels = in_channels * 4
-
-        self.time_embed = SinusoidalTimeEmbedding(dim=in_channels)
-        self.proj1 = Linear(in_channels, self.time_channels, key=tlin1_key)
-        self.act = SiLU()
-        self.proj2 = Linear(self.time_channels, self.time_channels, key=tlin2_key)
-
-    def __call__(self, x: Float[Array, "b"]) -> Float[Array, "b c"]:
-        t = self.time_embed(x)
-        t = self.proj1(t)
-        return t
+def TimeConditionalEmbedding(in_channels: int, key: PRNGKey, time_channels: Optional[int] = None):
+    """`time_channels` is an unused arg to satisfy time-base conditioning API"""
+    key, tlin1_key, tlin2_key = jax.random.split(key, 3)
+    if time_channels is None:
+        time_channels = in_channels * 4
+    return nn.Sequential(
+        [
+            SinusoidalTimeEmbedding(dim=in_channels),
+            Linear(in_channels, time_channels, key=tlin1_key),
+            SiLU(),
+            Linear(time_channels, time_channels, key=tlin2_key),
+        ]
+    )
 
 
 # UNet

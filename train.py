@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 def train(config: mlc.ConfigDict):
     device_count = jax.local_device_count()
-    logger.info(f"Devices: {jax.devices()}")
+    print(f"Devices: {jax.devices()}")
 
     if config.use_wandb:
         wandb.finish()  # Clear out any previous runs.
@@ -100,12 +100,12 @@ def train(config: mlc.ConfigDict):
         if step % config.train.sample_every == 0 and step != 0:
             key, bkey, skey = jax.random.split(key, 3)
             # Log some samples
-            num_samples = 6
+            num_samples = 8
             batch = jax.random.randint(
                 bkey,
-                (num_samples, 1, config.model.seq_len),
-                0,
-                2**config.model.bit_width,
+                shape=(num_samples, 1, config.model.seq_len),
+                minval=0,
+                maxval=2**config.model.bit_width,
             )
             batch = bit_encode(batch, config.model.bit_width, 1.0).reshape(
                 num_samples, config.model.bit_width, config.model.seq_len
@@ -113,14 +113,14 @@ def train(config: mlc.ConfigDict):
             generation = diffuser.generate(
                 net,
                 batch,
-                num_steps=100,
+                num_steps=1_000,
                 bit_width=config.model.bit_width,
                 key=skey,
                 time_delta=0.1,
             )
             generation = generation.squeeze(1).device_buffer.to_py()
-            logger.info(f"Generation IDs:\n{generation}")
-            logger.info(f"Generations:\n{[decode(g) for g in generation]}")
+            print(f"Generation IDs:\n{generation}")
+            print(f"Generations:\n{[decode(g) for g in generation]}")
         if step % config.train.save_every == 0:
             save(net, optim_state, step, config.checkpoint_path)
 
