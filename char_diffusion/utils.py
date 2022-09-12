@@ -31,18 +31,44 @@ def load(model: PyTree, path: str) -> Tuple[PyTree, PyTree, int]:
     return eqx.tree_deserialise_leaves(path, model)
 
 
-def enwik8(
+def mahoney_dataset(
     path: str,
     num_train: int = int(90e6),
     num_valid: int = int(5e6),
     num_test: int = int(5e6),
 ) -> Mapping[str, Array]:
-    # wget http://mattmahoney.net/dc/enwik8.zip -P ./tmp
-    # unzip ./tmp/enwik8.zip -d ./tmp
+    """Splits a Matth Mahoney dataset, e.g. text or enwik8.
+    ```
+        wget http://mattmahoney.net/dc/text8.zip -P ./tmp
+        unzip ./tmp/text8.zip -d ./tmp   
+    ```
+    """
     with open(path, mode="rb") as f:
         text = f.read(num_train + num_valid + num_test)
         data = np.frombuffer(text, dtype=np.uint8)
     train, valid, test = np.split(data, [num_train, num_train + num_valid])
+    return dict(train=train, valid=valid, test=test)
+
+def text_dataset(
+    path: str,
+    num_train: float = 0.9,
+    num_valid: int = 0.06,
+) -> Mapping[str, Array]:
+    """Splits a `.txt` dataset that can be read in-memory.
+    Args:
+        path: Path to a `.txt` file that can fit in-memory.
+    """
+    with open(path, mode="r") as f:
+        text = f.read()
+        text = " ".join(text.splitlines())
+        text = text.replace("   ", " ")
+        text = text.replace("  ", " ")
+        text = text.strip()
+        data = np.fromstring(text, dtype=np.uint8)
+    train, valid, test = np.split(data, [
+        int(num_train * len(data)),
+        int((num_train + num_valid) * len(data)),
+    ])
     return dict(train=train, valid=valid, test=test)
 
 
@@ -51,11 +77,11 @@ def dataloader(
     seq_len: int,
     micro_batch_size: int,
     device_count: Optional[int] = 1,
-    max_steps: int = 5e6,
-    rng: np.random.Generator = np.random.default_rng(2694),
+    max_steps: Optional[int] = 5e6,
+    rng: Optional[np.random.Generator] = np.random.default_rng(9426),
 ) -> Array:
-    """Returns a random batch of data from the specified dataset.
-    From @lucidrains
+    """Returns a shuffled dataset iterator from the specified dataset.
+    Reference: @lucidrains
     """
     i = 0
     while i < max_steps:

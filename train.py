@@ -12,7 +12,7 @@ import wandb
 import configs
 from char_diffusion.diffusion import CharDiffusion, bit_encode
 from char_diffusion.unet import UNet1d
-from char_diffusion.utils import dataloader, decode, enwik8, save, flatten_dict
+from char_diffusion.utils import dataloader, decode, mahoney_dataset, text_dataset, save, flatten_dict
 
 
 logger = logging.getLogger(__name__)
@@ -32,7 +32,10 @@ def train(config: mlc.ConfigDict):
             config=flatten_dict(config.to_dict()),
         )
 
-    datasets = enwik8("./tmp/enwik8")
+    if config.dataset.name in ['enwik8', 'text8']:
+        datasets = mahoney_dataset(config.dataset.path)
+    else:
+        datasets = text_dataset(config.dataset.path)
     dataloaders = {
         "train": dataloader(
             datasets["train"],
@@ -59,6 +62,7 @@ def train(config: mlc.ConfigDict):
         key=key,
         bit_width=config.model.bit_width,
         num_res_blocks=3,
+        num_heads=1,
         num_groups=4,
         attn_resolutions=(False, False, True),
         channel_mult=(1, 2, 4),
@@ -113,10 +117,10 @@ def train(config: mlc.ConfigDict):
             generation = diffuser.generate(
                 net,
                 batch,
-                num_steps=1_000,
+                num_steps=config.model.num_generation_steps,
                 bit_width=config.model.bit_width,
                 key=skey,
-                time_delta=0.1,
+                time_delta=0,
             )
             generation = generation.squeeze(1).device_buffer.to_py()
             print(f"Generation IDs:\n{generation}")
@@ -126,5 +130,5 @@ def train(config: mlc.ConfigDict):
 
 
 if __name__ == "__main__":
-    config = configs.char_diffusion_enwik8_config(base_dir="./")
+    config = configs.char_diffusion_text8_config(base_dir="./")
     train(config)

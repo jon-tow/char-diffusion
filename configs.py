@@ -26,7 +26,7 @@ def get_base_config():
     train.eval_every = 1_000
     train.log_every = 100
     train.sample_every = 1_000
-    train.save_every = 50_000
+    train.save_every = 10_000
     train.patience = 2_000  # Early-stopping patience.
     config.train = train
 
@@ -42,23 +42,24 @@ def get_base_config():
 def optimizer_config():
     # ADAM optimization configs.
     config = mlc.ConfigDict()
-    config.lr = 1e-4
+    config.lr = 3e-4
     config.adam_beta1 = 0.9
     config.adam_beta2 = 0.99
     return config
 
 
-def char_diffusion_enwik8_config(base_dir: str):
+def char_diffusion_text8_config(base_dir: str):
     config = get_base_config()
 
     # Analog bit encoding settings
     config.model = mlc.ConfigDict()
     config.model.name = "char-diffusion"
-    config.model.seq_len = 64
+    config.model.seq_len = 128
     config.model.bit_width = 8
     config.model.scale = 1.0
-    config.model.num_steps = 1_000
-    config.model.use_self_cond = True  # False
+    config.model.num_steps = 2_000
+    config.model.num_generation_steps = 1_000
+    config.model.use_self_cond = False
     config.model.ema_decay = 0.9999
     config.model.num_res_blocks = 3
     config.model.base_channels = 128
@@ -67,9 +68,12 @@ def char_diffusion_enwik8_config(base_dir: str):
     config.optim = optimizer_config()
 
     # Add dataset config
+    dataset_base_path = mkdir(base_dir, "tmp")
     config.dataset = mlc.ConfigDict()
-    config.dataset.name = "enwik8"
-    config.dataset.dir = mkdir(base_dir, "data")
+    config.dataset.name = "shakespeare"
+    config.dataset.ext = ".txt"
+    config.dataset.path = os.path.join(
+        dataset_base_path, config.dataset.name + config.dataset.ext)
 
     # Add model config
     # Add config name and working directory checkpoints, logs, etc.
@@ -77,7 +81,7 @@ def char_diffusion_enwik8_config(base_dir: str):
     config.sample_dir = mkdir(Path(base_dir), "samples", config.name)
 
     checkpoint_dir = mkdir(
-        Path(base_dir), "checkpoints", "baseline-char-diffusion-enwik8"
+        Path(base_dir), "checkpoints", "baseline-char-diffusion-text8"
     )
     config.checkpoint_path = str(Path(checkpoint_dir) / f"{config.name}.eqx")
     Path(config.checkpoint_path).touch(exist_ok=True)

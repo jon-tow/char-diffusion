@@ -23,7 +23,8 @@ PRNGKey = NewType("PRNGKey", jax._src.prng.PRNGKeyArray)
 def int2bit(inputs: Array, width: int = 8) -> Array:
     """Converts array of integers into corresponding binary bits."""
     inputs = rearrange(inputs, "... w -> ... w 1")
-    # If you don't flip, the lsb is the msb.
+    # NOTE: If you don't flip, the lsb is the msb.
+    # bitstring = jnp.arange(width)
     bitstring = jnp.flip(jnp.arange(width), -1)
     outputs = jnp.right_shift(inputs, bitstring)
     outputs = jnp.fmod(outputs, 2)
@@ -33,7 +34,8 @@ def int2bit(inputs: Array, width: int = 8) -> Array:
 def bit2int(inputs: Array, width: int = 8) -> Array:
     """Convert binary bits into the corresponding integers."""
     int_inputs = inputs.astype(jnp.int32)
-    # If you don't flip, the lsb is the msb.
+    # NOTE: If you don't flip, the lsb is the msb.
+    # bitstring = jnp.arange(width)
     bitstring = jnp.flip(jnp.arange(width), -1)
     outputs = jnp.sum(int_inputs * (2**bitstring), -1)
     return outputs
@@ -234,8 +236,7 @@ class CharDiffusion:
         cond_bits = net(
             jnp.concatenate([noisy_bits, pred_bits], self.channel_axis), time
         )
-        cond_bits = jax.lax.stop_gradient(cond_bits)
-        return cond_bits
+        return jax.lax.stop_gradient(cond_bits)
 
     def generate(
         self,
