@@ -8,10 +8,9 @@ import optax
 
 from equinox import Module
 from functools import partial
-from einops import rearrange
+from einops import rearrange, reduce
 
 from .custom_layers import left_broadcast_to
-from .losses import mse
 
 
 PRNGKey = NewType("PRNGKey", jax._src.prng.PRNGKeyArray)
@@ -83,7 +82,7 @@ def cosine_alpha_bar(
         offset: Small offset to prevent βₜ from beeing too small near
             t = 0.
     """
-    return jnp.cos(((time + offset) / (1 + offset)) * (jnp.pi / 2)) ** 2
+    return jnp.cos(((time + offset) / (1 + offset)) * jnp.pi / 2) ** 2
 
 
 def cosine_alpha_bar_schedule(
@@ -102,8 +101,9 @@ def sqrt_alpha_bar(
 ):
     """Square-root noise schedule - useful for language modeling.
 
-    Reference: Li et al. "Diffusion-LM Improves Controllable Text Generation"
-        2022. https://arxiv.org/pdf/2205.14217.pdf#page=15
+    Reference: 
+    - Li et al. "Diffusion-LM Improves Controllable Text Generation". 2022.
+        https://arxiv.org/pdf/2205.14217.pdf#page=15
 
     Args:
         time: Continous time-step in [0, 1)
@@ -128,9 +128,9 @@ def sqrt_alpha_bar_schedule(
 
 class CharDiffusion:
     """
-    Reference: Chen et al. "Analog Bits: Generating Discrete Data using
-        Diffusion Models with Self-Conditioning". 2022.
-        https://arxiv.org/pdf/2208.04202.pdf
+    Reference: 
+    - Chen et al. "Analog Bits: Generating Discrete Data using Diffusion Models
+        with Self-Conditioning". 2022. https://arxiv.org/pdf/2208.04202.pdf
     """
 
     def __init__(
@@ -199,7 +199,7 @@ class CharDiffusion:
 
         # Compute self-conditioning estimate
         cond_bits = jnp.zeros_like(noisy_bits, dtype=noisy_bits.dtype)
-        rand_self_cond = np.random.rand()
+        rand_self_cond = np.random.rand()  # TODO: Remove this source of non-determinism
         cond_bits = jax.lax.cond(
             self.use_self_cond and (rand_self_cond > 0.5),
             partial(self.self_cond_estimate, net=net, time=time),
@@ -212,8 +212,8 @@ class CharDiffusion:
         pred_bits = net(
             jnp.concatenate([noisy_bits, cond_bits], self.channel_axis), time
         )
-        loss = mse(pred_bits, targets=bits)
-        return loss
+        loss = (pred_bits - bits) ** 2
+        return reduce(loss, "b ... -> b", "mean")
 
     def corrupt(self, x: Array, time: int, key: PRNGKey) -> Array:
         """q sampler: q(xₜ | xₒ) ~ N(xₒ * Π(√(1-β)), 1 - Π(1 - β))
