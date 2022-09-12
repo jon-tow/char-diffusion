@@ -555,7 +555,7 @@ class UNet1d(Module):
         if bit_width is not None:
             # Account for the merged input channel and bit-width dimensions.
             in_channels *= bit_width
-            in_channels *= 2  # * 2 because of concatenated noise + estimate
+            in_channels *= 2  # * 2 because of concatenated noise + estimate arrays
             out_channels *= bit_width
 
         key, in_key = jax.random.split(key)

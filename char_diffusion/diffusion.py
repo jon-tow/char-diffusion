@@ -6,8 +6,8 @@ import jax.numpy as jnp
 import numpy as np
 import optax
 
-from equinox import Module
 from functools import partial
+from equinox import Module
 from einops import rearrange, reduce
 
 from .custom_layers import left_broadcast_to
@@ -253,7 +253,7 @@ class CharDiffusion:
 
         Args:
             x: Junk array that we can gather output shapes from.
-            time_delta: Asymmetric time interval shift, t → (t - Δ)
+            time_delta: Asymmetric time interval shift, t → (t - Δt)
         """
         key, tkey = jax.random.split(key, 2)
 
@@ -264,11 +264,13 @@ class CharDiffusion:
             step: int, state: Tuple[Array, Array]
         ) -> Tuple[Array, Array]:
             pred, x_t_prev = state
+
             # Get time for current and next states
             time_now = jnp.array([1 - step / num_steps])
             time_next = jnp.array(
                 [jnp.maximum(1 - (step + 1 + time_delta) / num_steps, 0.0)]
             )
+
             # Predict x_0
             pred = jax.lax.cond(
                 self.use_self_cond,
@@ -281,10 +283,12 @@ class CharDiffusion:
                 ),
                 x_t_prev,
             )
+
             # Estimate x at time_next
             x_t_next = self.ddim_step(x_t_prev, pred, time_now, time_next)
             return pred, x_t_next
 
+        # Run multi-step diffusion generation process
         init_state = (pred, x_t)
         pred, x_t = jax.lax.fori_loop(0, num_steps, _generate_body, init_state)
 
