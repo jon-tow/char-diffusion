@@ -75,7 +75,8 @@ def cosine_alpha_bar(
     """Cosine noise-variance ᾱ scheduler (ᾱ[t] = Πᵗα[i] where α[i] = (1 - β[i]))
     for continuous time parameterization.
 
-    Reference: Nichol & Dhariwal, "Improved Denoising Diffusion Probabilistic Models".
+    Reference: 
+    - Nichol & Dhariwal, "Improved Denoising Diffusion Probabilistic Models".
         2021. https://arxiv.org/pdf/2102.09672.pdf
 
     Args:
@@ -218,7 +219,9 @@ class CharDiffusion:
     def corrupt(self, x: Array, time: int, key: PRNGKey) -> Array:
         """q sampler: q(xₜ | xₒ) ~ N(xₒ * Π(√(1-β)), 1 - Π(1 - β))
         Arbitrary time sampler for forward diffusion processing (corruption).
-        Reference: Ho et al. 2020
+        
+        Reference: 
+        - Ho et al. 2020.
         """
         key, nkey = jax.random.split(key)
         noise = jax.random.normal(nkey, x.shape)  # ϵ

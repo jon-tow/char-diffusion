@@ -65,10 +65,9 @@ def merge_heads(x: Array) -> Array:
 
 class SelfAttentionBlock(Module):
     """
-    TODO: Support N-d input so that it can be used for non-spatial (h, w) data.
-    Reference: https://github.com/nshepperd/jax-guided-diffusion/blob/2320ce05aa2d6ea83234469ef86d36481ef962ea/lib/unet.py#L231
+    Reference: 
+    - https://github.com/nshepperd/jax-guided-diffusion/blob/2320ce05aa2d6ea83234469ef86d36481ef962ea/lib/unet.py#L231
     """
-
     wi: Array
     attn_wo: Array
     norm: Module
@@ -79,19 +78,12 @@ class SelfAttentionBlock(Module):
     def __init__(
         self,
         channels: int,  # input channels effectively the `head_dim`
-        *,
-        key: PRNGKey,
+        *, key: PRNGKey,
         num_heads: int,
         num_groups: Optional[int] = 32,
     ):
-        (
-            key,
-            ikey,
-            aokey,
-        ) = jax.random.split(key, 3)
-        self.scale = (
-            math.sqrt(channels) ** -1.0
-        )  # scaled dot-product attention factor: 1 / √dₖ
+        key, ikey, aokey = jax.random.split(key, 3)
+        self.scale = math.sqrt(channels) ** -1.0  # scaled dot-product attention factor: 1 / √dₖ
         self.num_heads = num_heads
         self.norm = GroupNorm(num_groups, channels)
 
@@ -115,7 +107,7 @@ class SelfAttentionBlock(Module):
             time: Unused time arg for sequential processing.
             bias: Attention similarity score bias, e.g. a causal mask.
         """
-        b, c, *spatial = x.shape
+        b, c = x.shape
         x = x.reshape(b, c, -1)
 
         # Pre-Norm
@@ -211,7 +203,7 @@ class Upsample(Module):
         self.mode = mode
 
     def __call__(
-        self, inputs: Float[Array, "n c e"], key: Optional[PRNGKey] = None
+        self, inputs: Float[Array, "b c e"], key: Optional[PRNGKey] = None
     ) -> Array:
         spatial_axes = inputs.shape[2:]
         feature_axes = inputs.shape[:2]
@@ -278,8 +270,7 @@ class DownsampleBlock(Module):
     def __call__(
         self,
         x: Array,
-        *,
-        key: Optional[PRNGKey] = None,
+        *, key: Optional[PRNGKey] = None,
         time: Optional[Array] = None,
     ) -> Array:
         return self.block(x)
@@ -296,49 +287,43 @@ class ResidualTimeBlock(Module):
         in_channels: int,
         out_channels: int,
         time_channels: int,
-        *,
-        key: PRNGKey,
+        *, key: PRNGKey,
         num_groups: Optional[int] = 32,
         dropout: Optional[float] = 0.0,
     ):
         key, lin_key, *conv_keys = jax.random.split(key, 4)
         self.time_proj = (
-            nn.Sequential(
-                [
-                    SiLU(),
-                    Linear(time_channels, out_channels, key=lin_key),
-                ]
-            )
+            nn.Sequential([
+                SiLU(),
+                Linear(time_channels, out_channels, key=lin_key),
+            ])
             if time_channels is not None
             else nn.Identity()
         )
-        self.block1 = nn.Sequential(
-            [
-                GroupNorm(num_groups, in_channels),
-                SiLU(),
-                Conv1d(
-                    in_channels,
-                    out_channels,
-                    kernel_size=3,
-                    padding=1,
-                    key=conv_keys[0],
-                ),
-            ]
-        )
-        self.block2 = nn.Sequential(
-            [
-                GroupNorm(num_groups, out_channels),
-                SiLU(),
-                # nn.Dropout(dropout),
-                Conv1d(
-                    out_channels,
-                    out_channels,
-                    kernel_size=3,
-                    padding=1,
-                    key=conv_keys[1],
-                ),
-            ]
-        )
+        self.block1 = nn.Sequential([
+            GroupNorm(num_groups, in_channels),
+            SiLU(),
+            Conv1d(
+                in_channels,
+                out_channels,
+                kernel_size=3,
+                padding=1,
+                key=conv_keys[0],
+            ),
+        ])
+        self.block2 = nn.Sequential([
+            GroupNorm(num_groups, out_channels),
+            SiLU(),
+            # TODO: Add `dropout` support.
+            # nn.Dropout(dropout),
+            Conv1d(
+                out_channels,
+                out_channels,
+                kernel_size=3,
+                padding=1,
+                key=conv_keys[1],
+            ),
+        ])
         if in_channels != out_channels:
             key, sc_key = jax.random.split(key)
             self.shortcut = Conv1d(
@@ -366,8 +351,6 @@ class ResidualTimeBlock(Module):
 
 
 class DBlock(Module):
-    """Down-sampling blocks to decrease resolutions"""
-
     blocks: nn.Sequential
     out_channels: int = static_field()
 
@@ -377,8 +360,7 @@ class DBlock(Module):
         time_channels: int,
         channel_mult: Tuple[int],
         attn_resolutions: Tuple[int],
-        *,
-        key: PRNGKey,
+        *, key: PRNGKey,
         num_heads: Optional[int] = 1,
         num_groups: Optional[int] = 32,
         num_res_blocks: Optional[int] = 3,
@@ -425,8 +407,6 @@ class DBlock(Module):
 
 
 class UBlock(Module):
-    """Up-sampling blocks to increase resolutions"""
-
     blocks: nn.Sequential
     out_channels: int = static_field()
 
@@ -436,8 +416,7 @@ class UBlock(Module):
         time_channels: int,
         channel_mult: Tuple[int],
         attn_resolutions: Tuple[int],
-        *,
-        key: PRNGKey,
+        *, key: PRNGKey,
         num_res_blocks: Optional[int] = 3,
         num_heads: Optional[int] = 1,
         num_groups: Optional[int] = 32,
@@ -484,16 +463,13 @@ class UBlock(Module):
 
 
 class MBlock(Module):
-    """Middle Block"""
-
     blocks: Module
 
     def __init__(
         self,
         channels: int,
         time_channels: int,
-        *,
-        key: PRNGKey,
+        *, key: PRNGKey,
         num_heads: Optional[int] = 1,
         num_groups: Optional[int] = 32,
     ):
@@ -533,8 +509,7 @@ class UNet1d(Module):
         in_channels: int,
         model_channels: int,
         num_res_blocks: int,
-        *,
-        key: PRNGKey,
+        *, key: PRNGKey,
         bit_width: Optional[int] = None,
         attn_resolutions: Tuple[int] = (False, False, True, True),
         num_heads: Optional[int] = 1,
@@ -608,19 +583,17 @@ class UNet1d(Module):
 
         block_in_channels = self.up_blocks.out_channels
         key, outkey = jax.random.split(key)
-        self.out_proj = nn.Sequential(
-            [
-                GroupNorm(block_in_channels, block_in_channels),
-                SiLU(),
-                Conv1d(
-                    block_in_channels,
-                    out_channels,
-                    kernel_size=3,
-                    padding=1,
-                    key=outkey,
-                ),
-            ]
-        )
+        self.out_proj = nn.Sequential([
+            GroupNorm(block_in_channels, block_in_channels),
+            SiLU(),
+            Conv1d(
+                block_in_channels,
+                out_channels,
+                kernel_size=3,
+                padding=1,
+                key=outkey,
+            ),
+        ])
 
     def __call__(
         self,

@@ -40,7 +40,9 @@ def to_dimension_numbers(
     transpose: bool,
 ) -> jax.lax.ConvDimensionNumbers:
     """Create a `lax.ConvDimensionNumbers` for the given inputs.
-    Reference: DeepMind's `dm-haiku`
+
+    Reference:
+    - DeepMind `dm-haiku`
     """
     num_dims = num_spatial_dims + 2
 
@@ -62,11 +64,11 @@ def to_dimension_numbers(
 
 
 class Conv(Module):
-    """Batched Conv:
-    2D: ('NCHW', 'OIHW', 'NCHW')
-    https://github.com/patrick-kidger/equinox/blob/main/equinox/nn/conv.py
+    """Batched Convolution Layer
+    
+    Reference:
+    - https://github.com/patrick-kidger/equinox/blob/main/equinox/nn/conv.py
     """
-
     num_spatial_dims: int = static_field()
     weight: Array
     bias: Optional[Array]
@@ -91,8 +93,7 @@ class Conv(Module):
         dilation: Union[int, Sequence[int]] = 1,
         groups: int = 1,
         use_bias: bool = True,
-        *,
-        key: PRNGKey,
+        *, key: PRNGKey,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -205,8 +206,7 @@ class Conv1d(Conv):
         dilation=1,
         groups=1,
         use_bias=True,
-        *,
-        key,
+        *, key,
         **kwargs,
     ):
         super().__init__(
@@ -236,8 +236,7 @@ class Linear(Module):
         in_features: int,
         out_features: int,
         use_bias: bool = True,
-        *,
-        key: PRNGKey,
+        *, key: PRNGKey,
     ):
         super().__init__()
         wkey, bkey = jax.random.split(key, 2)
@@ -302,8 +301,7 @@ class GroupNorm(Module):
     def __call__(
         self,
         inputs: Float[Array, "b c ..."],
-        *,
-        key: Optional["jax.random.PRNGKey"] = None,
+        *, key: Optional["jax.random.PRNGKey"] = None,
     ) -> Array:
         num_channels = inputs.shape[self.channel_index]
         y = inputs.reshape(
