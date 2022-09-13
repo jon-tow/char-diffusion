@@ -8,9 +8,12 @@
 - Add conditional text generation.
 
 
-## References
+## Citations 
 
-```bibtext
+
+Bit-Diffusion
+
+```bibtex
 @article{Chen2022AnalogBG,
     title   = {Analog Bits: Generating Discrete Data using Diffusion Models with Self-Conditioning},
     author  = {Ting Chen and Ruixiang Zhang and Geoffrey E. Hinton},
@@ -18,7 +21,11 @@
     year    = {2022},
     volume  = {abs/2208.04202}
 }
+```
 
+`sqrt` schedule 
+
+```bibtex
 @article{Li-2022-DiffusionLM,
   title={Diffusion-LM Improves Controllable Text Generation},
   author={Xiang Lisa Li and John Thickstun and Ishaan Gulrajani and Percy Liang and Tatsunori Hashimoto},

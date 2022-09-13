@@ -18,7 +18,6 @@ from char_diffusion.utils import dataloader, decode, mahoney_dataset, text_datas
 logger = logging.getLogger(__name__)
 
 
-
 def train(config: mlc.ConfigDict):
     device_count = jax.local_device_count()
     print(f"Devices: {jax.devices()}")
@@ -56,6 +55,8 @@ def train(config: mlc.ConfigDict):
     valid_iter = iter(dataloaders["valid"])
 
     key = jax.random.PRNGKey(config.seed)
+    # TODO: Update CharDiffusion so we don't have to specify `bit_width` twice;
+    # (once in the model and once in the diffuser).
     net = UNet1d(
         in_channels=1,
         model_channels=config.model.base_channels,
@@ -75,13 +76,14 @@ def train(config: mlc.ConfigDict):
     )
     optim_state = optim.init(net)
     step_state = 0
-    if config.checkpoint_path:
+    if config.checkpoint_path and config.train.resume:
         net, optim_state, step_state = load_state_dict(
             config.checkpoint_path,
             (net, optim_state, step_state)
         )
     diffuser = CharDiffusion(
         num_steps=config.model.num_steps,
+        bit_width=config.model.bit_width,
         use_self_cond=config.model.use_self_cond,
         optim=optim,
     )
@@ -107,7 +109,7 @@ def train(config: mlc.ConfigDict):
             wandb.log({"valid/loss": valid_loss}, step=step)
         # Generate reconstructions and samples.
         if step % config.train.sample_every == 0 and step != 0:
-            key, genkey = jax.random.split(key, 3)
+            key, genkey = jax.random.split(key)
             num_samples = 8
             generation = diffuser.generate(
                 net,
@@ -120,10 +122,14 @@ def train(config: mlc.ConfigDict):
             generation = generation.squeeze(1).device_buffer.to_py()
             print(f"Generation IDs:\n{generation}")
             print(f"Generations:\n{[decode(g) for g in generation]}")
-        if step % config.train.save_every == 0:
+        if step % config.train.save_every == 0 and step != 0:
             save(config.checkpoint_path, (net, optim_state, step))
 
 
 if __name__ == "__main__":
-    config = configs.char_diffusion_text8_config(base_dir="./")
+    config = configs.char_diffusion_base_config(
+        base_dir="./",
+        dataset_path="./tmp/linux.txt",
+        id=np.random.randint(0, 10_000),
+    )
     train(config)

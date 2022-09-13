@@ -20,7 +20,7 @@ def get_base_config():
     # Training configs.
     train = mlc.ConfigDict()
     train.clip_threshold = 1.0  # The clip gradient norm threshold.
-    train.batch_size = 64
+    train.batch_size = 16
     train.max_steps = 500_000
     # The below training configs are in units of 1 step (not epochs).
     train.eval_every = 1_000
@@ -28,6 +28,7 @@ def get_base_config():
     train.sample_every = 1_000
     train.save_every = 10_000
     train.patience = 2_000  # Early-stopping patience.
+    train.resume = False  # Whether to resume training from a checkpoint.
     config.train = train
 
     # Validation.
@@ -48,32 +49,30 @@ def optimizer_config():
     return config
 
 
-def char_diffusion_text8_config(base_dir: str):
+def char_diffusion_base_config(base_dir: str, dataset_path: str, id: int):
     config = get_base_config()
 
     # Analog bit encoding settings
     config.model = mlc.ConfigDict()
     config.model.name = "char-diffusion"
-    config.model.seq_len = 128
-    config.model.bit_width = 8
+    config.model.seq_len = 256
+    config.model.base_channels = 256
+    # Bit Diffusion settings
+    config.model.bit_width = 7
+    config.model.use_self_cond = True 
+    config.model.ema_decay = 0.9999
     config.model.scale = 1.0
+    config.model.num_res_blocks = 3
     config.model.num_steps = 2_000
     config.model.num_generation_steps = 1_000
-    config.model.use_self_cond = False
-    config.model.ema_decay = 0.9999
-    config.model.num_res_blocks = 3
-    config.model.base_channels = 128
 
     # Add optimizier config
     config.optim = optimizer_config()
 
     # Add dataset config
-    dataset_base_path = mkdir(base_dir, "tmp")
     config.dataset = mlc.ConfigDict()
-    config.dataset.name = "shakespeare"
-    config.dataset.ext = ".txt"
-    config.dataset.path = os.path.join(
-        dataset_base_path, config.dataset.name + config.dataset.ext)
+    config.dataset.name = Path(dataset_path).stem
+    config.dataset.path = dataset_path
 
     # Add model config
     # Add config name and working directory checkpoints, logs, etc.
@@ -81,7 +80,9 @@ def char_diffusion_text8_config(base_dir: str):
     config.sample_dir = mkdir(Path(base_dir), "samples", config.name)
 
     checkpoint_dir = mkdir(
-        Path(base_dir), "checkpoints", "baseline-char-diffusion-text8"
+        Path(base_dir),
+        "checkpoints",
+        f"baseline-char-diffusion-{config.dataset.name}-{id}",
     )
     config.checkpoint_path = str(Path(checkpoint_dir) / f"{config.name}.eqx")
     Path(config.checkpoint_path).touch(exist_ok=True)
