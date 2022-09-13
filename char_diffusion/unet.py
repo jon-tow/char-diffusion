@@ -107,7 +107,7 @@ class SelfAttentionBlock(Module):
             time: Unused time arg for sequential processing.
             bias: Attention similarity score bias, e.g. a causal mask.
         """
-        b, c = x.shape
+        b, c, *spatial = x.shape
         x = x.reshape(b, c, -1)
 
         # Pre-Norm
