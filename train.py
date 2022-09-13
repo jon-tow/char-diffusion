@@ -12,7 +12,7 @@ import wandb
 import configs
 from char_diffusion.diffusion import CharDiffusion, bit_encode
 from char_diffusion.unet import UNet1d
-from char_diffusion.utils import dataloader, decode, mahoney_dataset, text_dataset, save, flatten_dict
+from char_diffusion.utils import dataloader, decode, mahoney_dataset, text_dataset, save, load_state_dict, flatten_dict
 
 
 logger = logging.getLogger(__name__)
@@ -74,14 +74,19 @@ def train(config: mlc.ConfigDict):
         eps=1e-8,
     )
     optim_state = optim.init(net)
+    step_state = 0
+    if config.checkpoint_path:
+        net, optim_state, step_state = load_state_dict(
+            config.checkpoint_path,
+            (net, optim_state, step_state)
+        )
     diffuser = CharDiffusion(
         num_steps=config.model.num_steps,
         use_self_cond=config.model.use_self_cond,
         optim=optim,
     )
 
-    step_load = 0  # state['step']
-    for step in range(step_load, config.train.max_steps):
+    for step in range(step_state, config.train.max_steps):
         batch = next(train_iter)
         batch = np.expand_dims(batch, 2)
         key, next_key = jax.random.split(key)
@@ -103,7 +108,6 @@ def train(config: mlc.ConfigDict):
         # Generate reconstructions and samples.
         if step % config.train.sample_every == 0 and step != 0:
             key, bkey, skey = jax.random.split(key, 3)
-            # Log some samples
             num_samples = 8
             batch = jax.random.randint(
                 bkey,
@@ -126,7 +130,7 @@ def train(config: mlc.ConfigDict):
             print(f"Generation IDs:\n{generation}")
             print(f"Generations:\n{[decode(g) for g in generation]}")
         if step % config.train.save_every == 0:
-            save(net, optim_state, step, config.checkpoint_path)
+            save(config.checkpoint_path, (net, optim_state, step))
 
 
 if __name__ == "__main__":

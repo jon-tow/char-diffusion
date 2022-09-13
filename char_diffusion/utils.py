@@ -1,6 +1,9 @@
 from jaxtyping import PyTree, Array
 from typing import *
 
+import equinox as eqx
+import equinox.experimental as experimental
+import jax.numpy as jnp
 import numpy as np
 
 
@@ -18,17 +21,44 @@ def flatten_dict(d: dict, parent_key: str = "") -> dict:
     return flat_d
 
 
-def save(model: PyTree, optim_state: PyTree, step: int, path: str):
+def save(path: str, tree: PyTree, optim_state: PyTree, step: int):
     """Saves an `equinox` model to the specified file path."""
-    import equinox as eqx
-
-    eqx.tree_serialise_leaves(path, (model, optim_state, step))
+    eqx.tree_serialise_leaves(path, (tree, optim_state, step))
 
 
-def load(model: PyTree, path: str) -> Tuple[PyTree, PyTree, int]:
-    import equinox as eqx
+def load_state_dict(path: str, tree: PyTree) -> Tuple[PyTree, PyTree, int]:
+    return eqx.tree_deserialise_leaves(path, tree, filter_spec=default_deserialise_filter_spec)
 
-    return eqx.tree_deserialise_leaves(path, model)
+
+def default_deserialise_filter_spec(
+    f, x: Any, allow_pickle: bool = True
+) -> Any:
+    """Override default deserialise filter spec to allow loading pickled arrays."""
+    if isinstance(x, jnp.ndarray):
+        return jnp.load(f, allow_pickle=allow_pickle)
+    elif isinstance(x, np.ndarray):
+        return np.load(f, allow_pickle=allow_pickle)
+    elif isinstance(x, (bool, float, complex, int)):
+        return np.load(f, allow_pickle=allow_pickle).item()
+    elif isinstance(x, experimental.StateIndex):
+        # Make a new StateIndex. If we happen to load some state then we don't
+        # want to affect the `like` as a side-effect.
+        y = experimental.StateIndex(inference=x.inference)
+        saved_value = np.load(f, allow_pickle=allow_pickle).item()
+        assert isinstance(saved_value, bool)
+        if saved_value:
+            is_array = np.load(f, allow_pickle=allow_pickle).item()
+            assert isinstance(is_array, bool)
+            if is_array:
+                value = jnp.load(f, allow_pickle=allow_pickle)
+            else:
+                tuple_length = np.load(f, allow_pickle=allow_pickle).item()
+                assert isinstance(tuple_length, int)
+                value = tuple(jnp.load(f, allow_pickle=allow_pickle) for _ in range(tuple_length))
+            experimental.set_state(y, value)
+        return y
+    else:
+        return x
 
 
 def mahoney_dataset(
@@ -48,6 +78,7 @@ def mahoney_dataset(
         data = np.frombuffer(text, dtype=np.uint8)
     train, valid, test = np.split(data, [num_train, num_train + num_valid])
     return dict(train=train, valid=valid, test=test)
+
 
 def text_dataset(
     path: str,
