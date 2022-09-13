@@ -10,7 +10,7 @@ import optax
 import wandb
 
 import configs
-from char_diffusion.diffusion import CharDiffusion, bit_encode
+from char_diffusion.diffusion import CharDiffusion
 from char_diffusion.unet import UNet1d
 from char_diffusion.utils import dataloader, decode, mahoney_dataset, text_dataset, save, load_state_dict, flatten_dict
 
@@ -107,23 +107,14 @@ def train(config: mlc.ConfigDict):
             wandb.log({"valid/loss": valid_loss}, step=step)
         # Generate reconstructions and samples.
         if step % config.train.sample_every == 0 and step != 0:
-            key, bkey, skey = jax.random.split(key, 3)
+            key, genkey = jax.random.split(key, 3)
             num_samples = 8
-            batch = jax.random.randint(
-                bkey,
-                shape=(num_samples, 1, config.model.seq_len),
-                minval=0,
-                maxval=2**config.model.bit_width,
-            )
-            batch = bit_encode(batch, config.model.bit_width, 1.0).reshape(
-                num_samples, config.model.bit_width, config.model.seq_len
-            )
             generation = diffuser.generate(
                 net,
-                batch,
+                shape=(num_samples, config.model.bit_width, config.model.seq_len),
                 num_steps=config.model.num_generation_steps,
                 bit_width=config.model.bit_width,
-                key=skey,
+                key=genkey,
                 time_delta=0,
             )
             generation = generation.squeeze(1).device_buffer.to_py()

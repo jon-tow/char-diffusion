@@ -14,6 +14,7 @@ from .custom_layers import left_broadcast_to
 
 
 PRNGKey = NewType("PRNGKey", jax._src.prng.PRNGKeyArray)
+Shape = NewType("Shape", Tuple[int, ...])
 
 
 # Bit ops
@@ -244,7 +245,7 @@ class CharDiffusion:
     def generate(
         self,
         net: Module,
-        x: Float[Array, "b c e"],
+        shape: Shape,
         num_steps: int,
         bit_width: int,
         key: PRNGKey,
@@ -259,8 +260,7 @@ class CharDiffusion:
             time_delta: Asymmetric time interval shift, t → (t - Δt)
         """
         key, tkey = jax.random.split(key, 2)
-
-        x_t = jax.random.normal(tkey, x.shape)
+        x_t = jax.random.normal(tkey, shape)
         pred = jnp.zeros_like(x_t)
 
         def _generate_body(
