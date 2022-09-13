@@ -220,8 +220,7 @@ class UpsampleBlock1d(Module):
         self,
         in_channels: int,
         out_channels: int,
-        *,
-        key: PRNGKey,
+        *, key: PRNGKey,
     ):
         self.block = nn.Sequential(
             [
@@ -240,8 +239,7 @@ class UpsampleBlock1d(Module):
     def __call__(
         self,
         x: Array,
-        *,
-        key: Optional[PRNGKey] = None,
+        *, key: Optional[PRNGKey] = None,
         time: Optional[Array] = None,
     ) -> Array:
         return self.block(x)
@@ -254,8 +252,7 @@ class DownsampleBlock(Module):
         self,
         in_channels: int,
         out_channels: int,
-        *,
-        key: PRNGKey,
+        *, key: PRNGKey,
         stride: Optional[Tuple[int, int]] = 2,
     ):
         self.block = Conv1d(
@@ -339,8 +336,7 @@ class ResidualTimeBlock(Module):
         self,
         x: Float[Array, "c e"],
         time: Float[Array, "c"],
-        *,
-        key: Optional[PRNGKey] = None,
+        *, key: Optional[PRNGKey] = None,
     ) -> Array:
         h = self.block1(x)
         time = self.time_proj(time)
