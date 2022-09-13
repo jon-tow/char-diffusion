@@ -21,9 +21,9 @@ def flatten_dict(d: dict, parent_key: str = "") -> dict:
     return flat_d
 
 
-def save(path: str, tree: PyTree, optim_state: PyTree, step: int):
+def save(path: str, tree: PyTree):
     """Saves an `equinox` model to the specified file path."""
-    eqx.tree_serialise_leaves(path, (tree, optim_state, step))
+    eqx.tree_serialise_leaves(path, tree)
 
 
 def load_state_dict(path: str, tree: PyTree) -> Tuple[PyTree, PyTree, int]:
@@ -91,10 +91,10 @@ def text_dataset(
     """
     with open(path, mode="r") as f:
         text = f.read()
-        text = " ".join(text.splitlines())
-        text = text.replace("   ", " ")
-        text = text.replace("  ", " ")
-        text = text.strip()
+        # text = " ".join(text.splitlines())
+        # text = text.replace("   ", " ")
+        # text = text.replace("  ", " ")
+        # text = text.strip()
         data = np.fromstring(text, dtype=np.uint8)
     train, valid, test = np.split(data, [
         int(num_train * len(data)),
