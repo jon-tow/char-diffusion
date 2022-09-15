@@ -1,19 +1,16 @@
-import os
-
 import jax
-import jax.numpy as jnp
-import equinox as eqx
 import ml_collections as mlc
-import numpy as np
 import optax
 
 import char_diffusion as cd
-import configs
-
 from char_diffusion import utils
+from char_diffusion import configs
 
 
-def main(config: mlc.ConfigDict):
+def generate(config: mlc.ConfigDict):
+    assert config.checkpoint_path is not None, \
+        "Must provide a checkpoint path to generate samples."
+
     key = jax.random.PRNGKey(config.seed)
     net = cd.UNet1d(
         in_channels=1,
@@ -34,11 +31,11 @@ def main(config: mlc.ConfigDict):
     )
     optim_state = optim.init(net)
     step_state = 0
-    if config.checkpoint_path:
-        net, optim_state, step_state = utils.load_state_dict(
-            config.checkpoint_path,
-            (net, optim_state, step_state)
-        )
+
+    net, optim_state, step_state = utils.load_state_dict(
+        path=config.checkpoint_path,
+        tree=(net, optim_state, step_state)
+    )
 
     diffuser = cd.CharDiffusion(
         num_steps=config.model.num_steps,
@@ -51,7 +48,7 @@ def main(config: mlc.ConfigDict):
     generation = diffuser.generate(
         net,
         shape=(num_samples, config.model.bit_width, config.model.seq_len),
-        num_steps=config.model.num_generation_steps,
+        num_steps=config.model.num_gen_steps,
         bit_width=config.model.bit_width,
         key=gen_key,
         time_delta=0,
@@ -61,7 +58,6 @@ def main(config: mlc.ConfigDict):
     print(f"Generations:\n{[cd.utils.decode(g) for g in generation]}")
 
 if __name__ == "__main__":
-    config = configs.char_diffusion_text8_config(base_dir="./")
-    config.model.bit_width = 8
-    config.checkpoint_path = "/fsx/guac/char-diffusion/checkpoints/baseline-char-diffusion-text8/char-diffusion_shakespeare.eqx"
-    main(config)
+    config = configs.char_diffusion_base_config()
+    config.checkpoint_path = "/fsx/guac/char-diffusion/checkpoints/char-diffusion_war_and_peace-96930/checkpoint/latest/checkpoint.eqx"
+    generate(config)

@@ -1,13 +1,26 @@
+from pathlib import Path
 from jaxtyping import PyTree, Array
 from typing import *
 
-import equinox as eqx
-import equinox.experimental as experimental
+import logging
+import sys
+import os
+
+import jax
 import jax.numpy as jnp
 import numpy as np
+import equinox as eqx
+import equinox.experimental as experimental
 
 
-def flatten_dict(d: dict, parent_key: str = "") -> dict:
+# PyTree utils
+
+
+def count(tree: PyTree) -> int:
+    return sum(t.size for t in jax.tree_util.tree_leaves(tree))
+
+
+def flatten_dict(d: dict, parent_key: Optional[str] = "") -> dict:
     """
     Flattens a dict-of-dicts, replacing any nested key names with that name
     prepended with the parents' key names.
@@ -23,6 +36,9 @@ def flatten_dict(d: dict, parent_key: str = "") -> dict:
 
 def save(path: str, tree: PyTree):
     """Saves an `equinox` model to the specified file path."""
+    if not os.path.exists(path):
+        os.makedirs(Path(path).parent, exist_ok=True)
+        Path(path).touch()
     eqx.tree_serialise_leaves(path, tree)
 
 
@@ -31,7 +47,7 @@ def load_state_dict(path: str, tree: PyTree) -> Tuple[PyTree, PyTree, int]:
 
 
 def default_deserialise_filter_spec(
-    f, x: Any, allow_pickle: bool = True
+    f, x: Any, allow_pickle: Optional[bool] = True
 ) -> Any:
     """Override default deserialise filter spec to allow loading pickled arrays."""
     if isinstance(x, jnp.ndarray):
@@ -61,11 +77,14 @@ def default_deserialise_filter_spec(
         return x
 
 
+# Dataset utils
+
+
 def mahoney_dataset(
     path: str,
-    num_train: int = int(90e6),
-    num_valid: int = int(5e6),
-    num_test: int = int(5e6),
+    num_train: Optional[int] = int(90e6),
+    num_valid: Optional[int] = int(5e6),
+    num_test: Optional[int] = int(5e6),
 ) -> Mapping[str, Array]:
     """Splits a Matth Mahoney dataset, e.g. text or enwik8.
     ```
@@ -82,8 +101,8 @@ def mahoney_dataset(
 
 def text_dataset(
     path: str,
-    num_train: float = 0.9,
-    num_valid: int = 0.06,
+    num_train: Optional[float] = 0.9,
+    num_valid: Optional[float] = 0.06,
 ) -> Mapping[str, Array]:
     """Splits a `.txt` dataset that can be read in-memory.
     Args:
@@ -91,10 +110,10 @@ def text_dataset(
     """
     with open(path, mode="r") as f:
         text = f.read()
-        # text = " ".join(text.splitlines())
-        # text = text.replace("   ", " ")
-        # text = text.replace("  ", " ")
-        # text = text.strip()
+        text = " ".join(text.splitlines())
+        text = text.replace("   ", " ")
+        text = text.replace("  ", " ")
+        text = text.strip()
         data = np.fromstring(text, dtype=np.uint8)
     train, valid, test = np.split(data, [
         int(num_train * len(data)),
@@ -129,3 +148,32 @@ def dataloader(
 
 def decode(tokens: List[int]) -> str:
     return "".join(chr(max(t, 32)) for t in tokens)
+
+
+# File utils
+
+
+def mkdir(*paths: List[str]) -> str:
+    """Returns a new directory path made of `paths`."""
+    new_dir = os.path.join(*paths)
+    os.makedirs(new_dir, exist_ok=True)
+    return new_dir
+
+
+def init_logger(
+    logger: logging.Logger, output_dir: str, stdout_only=False
+):
+    stdout_handler = logging.StreamHandler(sys.stdout)
+    handlers = [stdout_handler]
+    if not stdout_only:
+        file_handler = logging.FileHandler(
+            filename=os.path.join(output_dir, 'run.log'))
+        handlers.append(file_handler)
+    logger.setLevel(logging.INFO)
+    for handler in handlers:
+        handler.setFormatter(
+            logging.Formatter(
+                "[%(asctime)s] {%(filename)s:%(lineno)d} %(levelname)s - %(message)s"
+            )
+        )
+        logger.addHandler(handler)

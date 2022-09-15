@@ -507,17 +507,17 @@ class UNet1d(Module):
         num_res_blocks: int,
         *, key: PRNGKey,
         bit_width: Optional[int] = None,
-        attn_resolutions: Tuple[int] = (False, False, True, True),
-        num_heads: Optional[int] = 1,
         num_groups: Optional[int] = 32,
+        num_heads: Optional[int] = 1,
+        attn_resolutions: Tuple[int] = (False, False, True, True),
         channel_mult: Optional[Tuple[int]] = (1, 2, 4, 8),
     ):
         """
         Args:
-            - model_channels: Base channel count for the model.
-            - attn_resolutions: Tuple of `bool`s that indicate whether to use
+            model_channels: Base channel count for the model.
+            attn_resolutions: Tuple of `bool`s that indicate whether to use
                 attention at each resolution level.
-            - channel_mult: Tuple of ints that indicate how to scale the model
+            channel_mult: Tuple of ints that indicate how to scale the model
                 channels at each resolution level.
         """
         assert len(attn_resolutions) == len(channel_mult)

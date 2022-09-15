@@ -5,7 +5,12 @@
 
 ## TODOs
 
-- Add conditional text generation.
+- [ ] Add EMA.
+
+- [ ] Add "softmax facorization" from Chen et al. to the output layer instead of using the final linear layer to directly predict analog bits.
+  > Instead of using a linear output layer to predict analog bits directly, we first predict a probability distribution over 256 classes per sub-pixel (with each class corresponds to one of the 256 different 8-bit codes), and then map class distribution into analog bits by taking weighted average over all 256 different 8-bit codes.
+
+- [ ] Add conditional text generation.
 
 
 ## Citations 

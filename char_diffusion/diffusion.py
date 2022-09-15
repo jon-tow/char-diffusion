@@ -76,7 +76,7 @@ def cosine_alpha_bar(
     """Cosine noise-variance ᾱ scheduler (ᾱ[t] = Πᵗα[i] where α[i] = (1 - β[i]))
     for continuous time parameterization.
 
-    Reference: 
+    Reference:
     - Nichol & Dhariwal, "Improved Denoising Diffusion Probabilistic Models".
         2021. https://arxiv.org/pdf/2102.09672.pdf
 
@@ -98,12 +98,12 @@ def cosine_alpha_bar_schedule(
 
 def sqrt_alpha_bar(
     time: float,
-    # max_time: int,  # Use if time is NOT in [0, 1)
+    # max_time: int,  # TODO: Use if time is NOT in [0, 1)
     offset: Optional[float] = 1e-4,
 ):
     """Square-root noise schedule - useful for language modeling.
 
-    Reference: 
+    Reference:
     - Li et al. "Diffusion-LM Improves Controllable Text Generation". 2022.
         https://arxiv.org/pdf/2205.14217.pdf#page=15
 
@@ -130,7 +130,7 @@ def sqrt_alpha_bar_schedule(
 
 class CharDiffusion:
     """
-    Reference: 
+    Reference:
     - Chen et al. "Analog Bits: Generating Discrete Data using Diffusion Models
         with Self-Conditioning". 2022. https://arxiv.org/pdf/2208.04202.pdf
     """
@@ -161,7 +161,6 @@ class CharDiffusion:
             optim_state: Tuple,
             key: PRNGKey,
         ) -> Tuple[Array, float, Array]:
-            """Batched train-step"""
             loss, grad = jax.value_and_grad(
                 lambda n, x, k: jnp.mean(self.loss_fn(n, x, k)), allow_int=True
             )(net, x, key)
@@ -169,7 +168,6 @@ class CharDiffusion:
             updates, optim_state = self.optim.update(grad, optim_state, net)
             net = optax.apply_updates(net, updates)
             return net, loss, optim_state
-
         self.train_step = train_step
         self.train_step_pmap = jax.pmap(
             self.train_step,
@@ -181,7 +179,6 @@ class CharDiffusion:
         def eval_step(net: Module, x: Array, key: PRNGKey) -> Array:
             loss = self.loss_fn(net, x, key)
             return jnp.asarray(loss)
-
         self.eval_step = eval_step
         self.eval_step_pmap = jax.pmap(
             self.eval_step,
@@ -220,8 +217,8 @@ class CharDiffusion:
     def corrupt(self, x: Array, time: int, key: PRNGKey) -> Array:
         """q sampler: q(xₜ | xₒ) ~ N(xₒ * Π(√(1-β)), 1 - Π(1 - β))
         Arbitrary time sampler for forward diffusion processing (corruption).
-        
-        Reference: 
+
+        Reference:
         - Ho et al. 2020.
         """
         key, nkey = jax.random.split(key)
@@ -249,14 +246,13 @@ class CharDiffusion:
         num_steps: int,
         bit_width: int,
         key: PRNGKey,
-        time_delta: int = 0,
+        time_delta: Optional[int] = 0,
     ) -> Array:
         """p sampler
         Sampler for the reverse diffusion process (denoising), i.e. predicts
         the initial x, xₒ.
 
         Args:
-            x: Junk array that we can gather output shapes from.
             time_delta: Asymmetric time interval shift, t → (t - Δt)
         """
         key, tkey = jax.random.split(key, 2)
@@ -270,15 +266,14 @@ class CharDiffusion:
 
             # Get time for current and next states
             time_now = jnp.array([1 - step / num_steps])
-            time_next = jnp.array(
-                [jnp.maximum(1 - (step + 1 + time_delta) / num_steps, 0.0)]
-            )
+            time_next = jnp.array([jnp.maximum(1 - (step + 1 + time_delta) / num_steps, 0.0)])
 
             # Predict x_0
             pred = jax.lax.cond(
                 self.use_self_cond,
                 lambda xtp: net(
-                    jnp.concatenate([xtp, pred], self.channel_axis), time_now
+                    jnp.concatenate([xtp, pred], self.channel_axis),
+                    time_now
                 ),
                 lambda xtp: net(
                     jnp.concatenate([xtp, jnp.zeros_like(xtp)], self.channel_axis),

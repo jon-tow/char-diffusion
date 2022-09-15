@@ -1,5 +1,7 @@
 from typing import *
 
+import os
+import sys
 import logging
 
 import jax
@@ -9,10 +11,9 @@ import ml_collections as mlc
 import optax
 import wandb
 
-import configs
-from char_diffusion.diffusion import CharDiffusion
-from char_diffusion.unet import UNet1d
-from char_diffusion.utils import dataloader, decode, mahoney_dataset, text_dataset, save, load_state_dict, flatten_dict
+import char_diffusion as cd
+import char_diffusion.configs as configs
+from char_diffusion.utils import *
 
 
 logger = logging.getLogger(__name__)
@@ -20,15 +21,16 @@ logger = logging.getLogger(__name__)
 
 def train(config: mlc.ConfigDict):
     device_count = jax.local_device_count()
-    print(f"Devices: {jax.devices()}")
+    logger.info(f"Devices: {jax.devices()}")
 
     if config.use_wandb:
         wandb.finish()  # Clear out any previous runs.
         wandb.init(
-            project=config.project_name,
-            entity="jon-tow",
+            project=config.wandb_project_name,
+            entity=config.wandb_entity,
             name=config.name,
             config=flatten_dict(config.to_dict()),
+            id=config.wandb_id,
         )
 
     if config.dataset.name in ['enwik8', 'text8']:
@@ -54,15 +56,15 @@ def train(config: mlc.ConfigDict):
     train_iter = iter(dataloaders["train"])
     valid_iter = iter(dataloaders["valid"])
 
-    key = jax.random.PRNGKey(config.seed)
     # TODO: Update CharDiffusion so we don't have to specify `bit_width` twice;
-    # (once in the model and once in the diffuser).
-    net = UNet1d(
+    # (once in the unet and once in the diffuser).
+    key = jax.random.PRNGKey(config.seed)
+    net = cd.UNet1d(
         in_channels=1,
         model_channels=config.model.base_channels,
         key=key,
         bit_width=config.model.bit_width,
-        num_res_blocks=3,
+        num_res_blocks=config.model.num_res_blocks,
         num_heads=1,
         num_groups=4,
         attn_resolutions=(False, False, True),
@@ -76,12 +78,16 @@ def train(config: mlc.ConfigDict):
     )
     optim_state = optim.init(net)
     step_state = 0
-    if config.checkpoint_path and config.train.resume:
+    if config.train.resume and Path(config.output_dir).exists():
         net, optim_state, step_state = load_state_dict(
-            config.checkpoint_path,
-            (net, optim_state, step_state)
+            path=os.path.join(config.output_dir, "checkpoint", "latest", "checkpoint.eqx"),
+            tree=(net, optim_state, step_state)
         )
-    diffuser = CharDiffusion(
+
+    logger.info(f"Network parameter count: ~ {format(count(net), ',')}")
+    logger.info(f"Starting Step: {step_state}")
+    
+    diffuser = cd.CharDiffusion(
         num_steps=config.model.num_steps,
         bit_width=config.model.bit_width,
         use_self_cond=config.model.use_self_cond,
@@ -99,37 +105,55 @@ def train(config: mlc.ConfigDict):
         if step % config.train.log_every == 0:
             loss = jnp.mean(batch_loss).item()
             wandb.log({"train/loss": loss}, step=step)
+            info = f"Step: {step}/{config.train.max_steps} | Loss: {loss:.5f}"
+            logger.info(info)
         # Evaluate vqvae and log the validation stats.
         if step % config.train.eval_every == 0:
-            key, vkey = jax.random.split(key)
+            key, valid_key = jax.random.split(key)
             valid_batch = next(valid_iter)
             valid_batch = np.expand_dims(valid_batch, 2)
-            valid_batch_loss = diffuser.eval_step_pmap(net, valid_batch, vkey)
+            valid_batch_loss = diffuser.eval_step_pmap(net, valid_batch, valid_key)
             valid_loss = np.mean(valid_batch_loss).item()
             wandb.log({"valid/loss": valid_loss}, step=step)
+            save(
+                path=os.path.join(config.output_dir, "checkpoint", "latest", "checkpoint.eqx"),
+                tree=(net, optim_state, step)
+            )
         # Generate reconstructions and samples.
         if step % config.train.sample_every == 0 and step != 0:
-            key, genkey = jax.random.split(key)
+            key, gen_key = jax.random.split(key)
             num_samples = 8
-            generation = diffuser.generate(
+            samples = diffuser.generate(
                 net,
-                shape=(num_samples, config.model.bit_width, config.model.seq_len),
-                num_steps=config.model.num_generation_steps,
+                shape=(num_samples, config.model.bit_width, config.model.max_gen_len),
+                num_steps=config.model.num_gen_steps,
                 bit_width=config.model.bit_width,
-                key=genkey,
+                key=gen_key,
                 time_delta=0,
             )
-            generation = generation.squeeze(1).device_buffer.to_py()
-            print(f"Generation IDs:\n{generation}")
-            print(f"Generations:\n{[decode(g) for g in generation]}")
+            samples = samples.squeeze(1).device_buffer.to_py()
+            sample_log = "\nSamples:\n"
+            for sample in samples:
+                sample_log += f"➜ {decode(sample)}\n"
+            logger.info(sample_log)
         if step % config.train.save_every == 0 and step != 0:
-            save(config.checkpoint_path, (net, optim_state, step))
+            save(
+                path=os.path.join(config.output_dir, f"step-{step}", "checkpoint.eqx"),
+                tree=(net, optim_state, step)
+            )
 
 
 if __name__ == "__main__":
     config = configs.char_diffusion_base_config(
-        base_dir="./",
-        dataset_path="./tmp/linux.txt",
-        id=np.random.randint(0, 10_000),
+        dataset_path="./tmp/war_and_peace.txt", #"./tmp/linux.txt",
+        id=np.random.randint(0, 1e5),
     )
+    os.makedirs(config.output_dir, exist_ok=True)
+    config.wandb_entity = "jon-tow"
+    
+    config.wandb_id = "2t79hqnr"
+    config.output_dir = "/fsx/guac/char-diffusion/checkpoints/char-diffusion_war_and_peace-96930"
+    config.train.resume = True
+
+    init_logger(logger, config.output_dir)
     train(config)
