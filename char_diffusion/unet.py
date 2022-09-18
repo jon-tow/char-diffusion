@@ -172,14 +172,12 @@ def TimeConditionalEmbedding(in_channels: int, key: PRNGKey, time_channels: Opti
     key, tlin1_key, tlin2_key = jax.random.split(key, 3)
     if time_channels is None:
         time_channels = in_channels * 4
-    return nn.Sequential(
-        [
-            SinusoidalTimeEmbedding(dim=in_channels),
-            Linear(in_channels, time_channels, key=tlin1_key),
-            SiLU(),
-            Linear(time_channels, time_channels, key=tlin2_key),
-        ]
-    )
+    return nn.Sequential([
+        SinusoidalTimeEmbedding(dim=in_channels),
+        Linear(in_channels, time_channels, key=tlin1_key),
+        SiLU(),
+        Linear(time_channels, time_channels, key=tlin2_key),
+    ])
 
 
 # UNet
@@ -222,19 +220,17 @@ class UpsampleBlock1d(Module):
         out_channels: int,
         *, key: PRNGKey,
     ):
-        self.block = nn.Sequential(
-            [
-                Upsample(scale_factor=2, mode="nearest"),
-                Conv1d(
-                    in_channels,
-                    out_channels,
-                    kernel_size=3,
-                    padding=1,
-                    use_bias=False,
-                    key=key,
-                ),
-            ]
-        )
+        self.block = nn.Sequential([
+            Upsample(scale_factor=2, mode="nearest"),
+            Conv1d(
+                in_channels,
+                out_channels,
+                kernel_size=3,
+                padding=1,
+                use_bias=False,
+                key=key,
+            ),
+        ])
 
     def __call__(
         self,

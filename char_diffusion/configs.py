@@ -7,12 +7,12 @@ from typing import *
 
 def get_base_config() -> mlc.ConfigDict:
     config = mlc.ConfigDict()
-    config.seed = 26
+    config.seed = 2617
     config.name = ""
 
     # Training configs
     train = mlc.ConfigDict()
-    train.batch_size = 32
+    train.batch_size = 64
     train.max_steps = 200_000
     train.clip_threshold = 1.0  # The clip gradient norm threshold.
     train.resume = False  # Whether to resume training from a checkpoint.
@@ -51,17 +51,20 @@ def char_diffusion_base_config(
     # Add model config
     config.model = mlc.ConfigDict()
     config.model.name = "char-diffusion"
-    config.model.seq_len = 256
-    config.model.max_gen_len = 128
-    config.model.base_channels = 296
-    # Bit Diffusion settings
-    config.model.bit_width = 8
-    config.model.use_self_cond = True
+    config.model.schedule = "cosine"
+    config.model.seq_len = 64
+    config.model.max_gen_len = 64
+    config.model.base_channels = 256
     config.model.ema_decay = 0.9999
     config.model.scale = 1.0
     config.model.num_res_blocks = 3
     config.model.num_steps = 2_000
-    config.model.num_gen_steps = 1_000
+    config.model.num_gen_steps = 2_000
+    config.model.num_heads = 4
+    # Bit Diffusion settings
+    config.model.bit_width = 8
+    config.model.use_self_cond = True
+    config.model.time_delta = 2.0
 
     # Add optimizier config
     config.optim = optimizer_config()

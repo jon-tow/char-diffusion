@@ -5,6 +5,7 @@ import optax
 import char_diffusion as cd
 from char_diffusion import utils
 from char_diffusion import configs
+from char_diffusion.diffusion import get_schedule
 
 
 def generate(config: mlc.ConfigDict):
@@ -17,8 +18,8 @@ def generate(config: mlc.ConfigDict):
         model_channels=config.model.base_channels,
         key=key,
         bit_width=config.model.bit_width,
-        num_res_blocks=3,
-        num_heads=1,
+        num_res_blocks=config.model.num_res_blocks,
+        num_heads=config.model.num_heads,
         num_groups=4,
         attn_resolutions=(False, False, True),
         channel_mult=(1, 2, 4),
@@ -40,6 +41,7 @@ def generate(config: mlc.ConfigDict):
     diffuser = cd.CharDiffusion(
         num_steps=config.model.num_steps,
         use_self_cond=config.model.use_self_cond,
+        gamma_schedule=get_schedule(config.model.schedule),
         optim=optim,
     )
 
@@ -51,7 +53,7 @@ def generate(config: mlc.ConfigDict):
         num_steps=config.model.num_gen_steps,
         bit_width=config.model.bit_width,
         key=gen_key,
-        time_delta=0,
+        time_delta=2.0,
     )
     generation = generation.squeeze(1).device_buffer.to_py()
     print(f"Generation IDs:\n{generation}")
@@ -59,5 +61,8 @@ def generate(config: mlc.ConfigDict):
 
 if __name__ == "__main__":
     config = configs.char_diffusion_base_config()
-    config.checkpoint_path = "/fsx/guac/char-diffusion/checkpoints/char-diffusion_war_and_peace-96930/checkpoint/latest/checkpoint.eqx"
+    config.seed = 9999
+    config.model.num_gen_steps = 2_000
+    config.model.schedule = "cosine"
+    config.checkpoint_path = ""
     generate(config)

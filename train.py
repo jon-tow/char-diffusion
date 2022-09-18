@@ -13,6 +13,7 @@ import wandb
 
 import char_diffusion as cd
 import char_diffusion.configs as configs
+from char_diffusion.diffusion import get_schedule
 from char_diffusion.utils import *
 
 
@@ -65,20 +66,32 @@ def train(config: mlc.ConfigDict):
         key=key,
         bit_width=config.model.bit_width,
         num_res_blocks=config.model.num_res_blocks,
-        num_heads=1,
+        num_heads=config.model.num_heads,
         num_groups=4,
         attn_resolutions=(False, False, True),
         channel_mult=(1, 2, 4),
     )
-    optim = optax.adam(
-        config.optim.lr,
-        b1=config.optim.adam_beta1,
-        b2=config.optim.adam_beta2,
-        eps=1e-8,
+    optim = optax.chain(
+        optax.clip_by_global_norm(1.0),
+        optax.adam(
+            config.optim.lr,
+            b1=config.optim.adam_beta1,
+            b2=config.optim.adam_beta2,
+            eps=1e-8,
+        )
     )
     optim_state = optim.init(net)
     step_state = 0
-    if config.train.resume and Path(config.output_dir).exists():
+    if (
+        config.train.resume 
+        and config.checkpoint_path is not None
+        and Path(config.checkpoint_path).exists()
+    ):
+        net, optim_state, step_state = load_state_dict(
+            path=config.checkpoint_path,
+            tree=(net, optim_state, step_state)
+        )
+    elif config.train.resume and Path(config.output_dir).exists():
         net, optim_state, step_state = load_state_dict(
             path=os.path.join(config.output_dir, "checkpoint", "latest", "checkpoint.eqx"),
             tree=(net, optim_state, step_state)
@@ -91,6 +104,7 @@ def train(config: mlc.ConfigDict):
         num_steps=config.model.num_steps,
         bit_width=config.model.bit_width,
         use_self_cond=config.model.use_self_cond,
+        gamma_schedule=get_schedule(config.model.schedule),
         optim=optim,
     )
 
@@ -129,7 +143,7 @@ def train(config: mlc.ConfigDict):
                 num_steps=config.model.num_gen_steps,
                 bit_width=config.model.bit_width,
                 key=gen_key,
-                time_delta=0,
+                time_delta=config.model.time_delta,
             )
             samples = samples.squeeze(1).device_buffer.to_py()
             sample_log = "\nSamples:\n"
@@ -138,7 +152,7 @@ def train(config: mlc.ConfigDict):
             logger.info(sample_log)
         if step % config.train.save_every == 0 and step != 0:
             save(
-                path=os.path.join(config.output_dir, f"step-{step}", "checkpoint.eqx"),
+                path=os.path.join(config.output_dir, "checkpoint", f"step-{step}", "checkpoint.eqx"),
                 tree=(net, optim_state, step)
             )
 
@@ -148,12 +162,8 @@ if __name__ == "__main__":
         dataset_path="./tmp/war_and_peace.txt", #"./tmp/linux.txt",
         id=np.random.randint(0, 1e5),
     )
-    os.makedirs(config.output_dir, exist_ok=True)
     config.wandb_entity = "jon-tow"
-    
-    config.wandb_id = "2t79hqnr"
-    config.output_dir = "/fsx/guac/char-diffusion/checkpoints/char-diffusion_war_and_peace-96930"
-    config.train.resume = True
+    os.makedirs(config.output_dir, exist_ok=True)
 
     init_logger(logger, config.output_dir)
     train(config)

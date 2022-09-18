@@ -66,7 +66,16 @@ def bit_decode(bits: Array, width: int) -> Array:
 bit_decode = jax.vmap(bit_decode, in_axes=(0, None))
 
 
-# Diffusion scheduler
+# Diffusion schedules
+
+
+def get_schedule(schedule_name: str, **kwargs) -> Callable:
+    """Returns ᾱ schedules"""
+    if schedule_name == "cosine":
+        return cosine_alpha_bar_schedule(**kwargs)
+    elif schedule_name == "sqrt":
+        return sqrt_alpha_bar_schedule(**kwargs)
+    raise ValueError(f"Schedule `{schedule_name}` is not available.")
 
 
 def cosine_alpha_bar(
@@ -98,7 +107,7 @@ def cosine_alpha_bar_schedule(
 
 def sqrt_alpha_bar(
     time: float,
-    # max_time: int,  # TODO: Use if time is NOT in [0, 1)
+    # max_t: int,  # TODO: Use if time is NOT in [0, 1)
     offset: Optional[float] = 1e-4,
 ):
     """Square-root noise schedule - useful for language modeling.
@@ -112,7 +121,7 @@ def sqrt_alpha_bar(
         offset: Start noise level.
     """
     # Normalize if your input is not in [0, 1)
-    # return 1.0 - jnp.sqrt((time / max_time) + offset)
+    # return 1.0 - jnp.sqrt((time / max_t) + offset)
     return 1.0 - jnp.sqrt(time + offset)
 
 
@@ -151,9 +160,7 @@ class CharDiffusion:
         self.bit_scale = bit_scale
         self.use_self_cond = use_self_cond
         self.optim = optim
-
-        # Continuous time parameterization
-        self.gamma = gamma_schedule  # γ = ᾱ
+        self.gamma = gamma_schedule
 
         def train_step(
             net: Module,
@@ -162,7 +169,8 @@ class CharDiffusion:
             key: PRNGKey,
         ) -> Tuple[Array, float, Array]:
             loss, grad = jax.value_and_grad(
-                lambda n, x, k: jnp.mean(self.loss_fn(n, x, k)), allow_int=True
+                lambda n, x, k: jnp.mean(self.loss_fn(n, x, k)),
+                allow_int=True
             )(net, x, key)
             grad = jax.lax.pmean(grad, axis_name="batch")
             updates, optim_state = self.optim.update(grad, optim_state, net)
@@ -194,27 +202,31 @@ class CharDiffusion:
 
         # Select random timestep
         time = jax.random.uniform(tkey, (batch_size,))
+        # Corrupt data
         noisy_bits = self.corrupt(bits, time, key=key)
 
         # Compute self-conditioning estimate
         cond_bits = jnp.zeros_like(noisy_bits, dtype=noisy_bits.dtype)
         rand_self_cond = np.random.rand()  # TODO: Remove this source of non-determinism
         cond_bits = jax.lax.cond(
-            self.use_self_cond and (rand_self_cond > 0.5),
+            self.use_self_cond and rand_self_cond > 0.5,
             partial(self.self_cond_estimate, net=net, time=time),
             lambda noisy_bits, cond_bits: cond_bits,
             noisy_bits,
             cond_bits,
         )
 
-        # Predict and compute loss
+        # Predict x0 bits
         pred_bits = net(
-            jnp.concatenate([noisy_bits, cond_bits], self.channel_axis), time
+            jnp.concatenate([noisy_bits, cond_bits], self.channel_axis),
+            time=time
         )
+
+        # Compute loss
         loss = (pred_bits - bits) ** 2
         return reduce(loss, "b ... -> b", "mean")
 
-    def corrupt(self, x: Array, time: int, key: PRNGKey) -> Array:
+    def corrupt(self, x: Array, time: float, key: PRNGKey) -> Array:
         """q sampler: q(xₜ | xₒ) ~ N(xₒ * Π(√(1-β)), 1 - Π(1 - β))
         Arbitrary time sampler for forward diffusion processing (corruption).
 
@@ -224,7 +236,7 @@ class CharDiffusion:
         key, nkey = jax.random.split(key)
         noise = jax.random.normal(nkey, x.shape)  # ϵ
 
-        signal_rate = jnp.sqrt(self.gamma(time))[:, None]
+        signal_rate = jnp.sqrt(self.gamma(time))
         noise_rate = jnp.sqrt(1 - self.gamma(time))
 
         signal_rate = left_broadcast_to(signal_rate, x.shape)
@@ -235,7 +247,8 @@ class CharDiffusion:
         self, noisy_bits: Array, pred_bits: Array, net: Module, time: Array
     ) -> Array:
         cond_bits = net(
-            jnp.concatenate([noisy_bits, pred_bits], self.channel_axis), time
+            jnp.concatenate([noisy_bits, pred_bits], self.channel_axis),
+            time=time
         )
         return jax.lax.stop_gradient(cond_bits)
 
@@ -246,14 +259,14 @@ class CharDiffusion:
         num_steps: int,
         bit_width: int,
         key: PRNGKey,
-        time_delta: Optional[int] = 0,
+        time_delta: Optional[float] = 0.0,
     ) -> Array:
         """p sampler
         Sampler for the reverse diffusion process (denoising), i.e. predicts
         the initial x, xₒ.
 
         Args:
-            time_delta: Asymmetric time interval shift, t → (t - Δt)
+            time_delta: Asymmetric time interval shift, t → (t - Δ)
         """
         key, tkey = jax.random.split(key, 2)
         x_t = jax.random.normal(tkey, shape)
@@ -273,11 +286,11 @@ class CharDiffusion:
                 self.use_self_cond,
                 lambda xtp: net(
                     jnp.concatenate([xtp, pred], self.channel_axis),
-                    time_now
+                    time=time_now
                 ),
                 lambda xtp: net(
                     jnp.concatenate([xtp, jnp.zeros_like(xtp)], self.channel_axis),
-                    time_now,
+                    time=time_now,
                 ),
                 x_t_prev,
             )
