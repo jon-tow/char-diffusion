@@ -168,7 +168,7 @@ class SinusoidalTimeEmbedding(Module):
 
 
 def TimeConditionalEmbedding(in_channels: int, key: PRNGKey, time_channels: Optional[int] = None):
-    """`time_channels` is an unused arg to satisfy time-base conditioning API"""
+    """`time_channels` is an unused arg to satisfy time-based conditioning API"""
     key, tlin1_key, tlin2_key = jax.random.split(key, 3)
     if time_channels is None:
         time_channels = in_channels * 4
@@ -195,7 +195,7 @@ class Upsample(Module):
     ):
         """
         Args:
-            - axis: The channel axis in channel-first data format.
+            axis: The channel axis in channel-first data format.
         """
         self.scale_factor = scale_factor
         self.mode = mode
