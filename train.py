@@ -72,7 +72,9 @@ def train(config: mlc.ConfigDict):
         channel_mult=(1, 2, 4),
     )
     optim = optax.chain(
-        optax.clip_by_global_norm(1.0),
+        optax.clip_by_global_norm(
+            config.optim.clip_threshold,
+        ),
         optax.adam(
             config.optim.lr,
             b1=config.optim.adam_beta1,
@@ -99,6 +101,7 @@ def train(config: mlc.ConfigDict):
 
     logger.info(f"Network parameter count: ~ {format(count(net), ',')}")
     logger.info(f"Starting Step: {step_state}")
+    logger.info(f"Config:\n{config}")
     
     diffuser = cd.CharDiffusion(
         num_steps=config.model.num_steps,
@@ -163,6 +166,11 @@ if __name__ == "__main__":
         id=np.random.randint(0, 1e5),
     )
     config.wandb_entity = "jon-tow"
+    # config.wandb_id = "2itvppsj"
+    # config.train.resume = True
+    # config.output_dir = "/fsx/guac/char-diffusion/checkpoints/char-diffusion_war_and_peace-35535"
+    # config.checkpoint_path = "/fsx/guac/char-diffusion/checkpoints/char-diffusion_war_and_peace-35535/checkpoint/latest/"
+
     os.makedirs(config.output_dir, exist_ok=True)
 
     init_logger(logger, config.output_dir)

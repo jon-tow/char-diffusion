@@ -1,4 +1,3 @@
-import os
 import ml_collections as mlc
 
 from pathlib import Path
@@ -14,7 +13,6 @@ def get_base_config() -> mlc.ConfigDict:
     train = mlc.ConfigDict()
     train.batch_size = 64
     train.max_steps = 200_000
-    train.clip_threshold = 1.0  # The clip gradient norm threshold.
     train.resume = False  # Whether to resume training from a checkpoint.
     # NOTE: The below training configs are in units of steps (not epochs).
     train.eval_every = 1_000
@@ -39,6 +37,7 @@ def optimizer_config() -> mlc.ConfigDict:
     config.lr = 2e-4
     config.adam_beta1 = 0.9
     config.adam_beta2 = 0.99
+    config.clip_threshold = 1.0  # The clip gradient norm threshold.
     return config
 
 
