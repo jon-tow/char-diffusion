@@ -1,7 +1,6 @@
 from typing import *
 
 import os
-import sys
 import logging
 
 import jax
@@ -166,10 +165,6 @@ if __name__ == "__main__":
         id=np.random.randint(0, 1e5),
     )
     config.wandb_entity = "jon-tow"
-    # config.wandb_id = "2itvppsj"
-    # config.train.resume = True
-    # config.output_dir = "/fsx/guac/char-diffusion/checkpoints/char-diffusion_war_and_peace-35535"
-    # config.checkpoint_path = "/fsx/guac/char-diffusion/checkpoints/char-diffusion_war_and_peace-35535/checkpoint/latest/"
 
     os.makedirs(config.output_dir, exist_ok=True)
 

@@ -12,7 +12,7 @@ from equinox import Module, static_field
 from functools import partial
 from einops import rearrange
 
-from .custom_layers import Conv1d, GroupNorm, Linear
+from .custom_layers import Conv1d, GroupNorm, LayerNorm, Linear
 
 
 DType = NewType("DType", jax.numpy.dtype)
@@ -20,10 +20,55 @@ Shape = NewType("Shape", Tuple[int, ...])
 PRNGKey = NewType("PRNGKey", jax._src.prng.PRNGKeyArray)
 
 
-class SiLU(Module):
-    def __init__(self):
-        super().__init__()
+class RMSNorm(Module):
+    gain: jnp.ndarray
+    scale: float = static_field()
+    eps: float = static_field()
 
+    def __init__(self, dim: int, eps: float = 1e-5):
+        """
+        Args:
+            dim: Dimensionality of input array.
+            eps: Tiny epsilon value for stability.
+        """
+        self.gain = jnp.ones((dim,))
+        # Scalar forces norm into √(dim)-scaled unit sphere (normalization coef).
+        self.scale = dim ** 0.5
+        self.eps = eps
+
+    def __call__(self, x: Array) -> Array:
+        sum_of_squares = jnp.sum(x ** 2, axis=-1, keepdims=True)
+        inv_rms = self.scale * jax.lax.rsqrt(sum_of_squares + self.eps)
+        normed = x * inv_rms
+        return self.gain * normed
+
+
+class EinopsToAndFrom(Module):
+    """Rearranges inputs to and from a pattern.
+
+    Reference:
+    - https://github.com/lucidrains/einops-exts/blob/main/einops_exts/torch.py
+    """
+    from_pattern: str = static_field()
+    to_pattern: str = static_field()
+    module: Module
+
+    def __init__(self, from_pattern: str, to_pattern: str, module: Module):
+        super().__init__()
+        self.from_pattern = from_pattern
+        self.to_pattern = to_pattern
+        self.module = module
+
+    def __call__(self, x, **kwargs):
+        shape = x.shape
+        reconstitute_kwargs = dict(tuple(zip(self.from_pattern.split(' '), shape)))
+        x = rearrange(x, f'{self.from_pattern} -> {self.to_pattern}')
+        x = self.module(x, **kwargs)
+        x = rearrange(x, f'{self.to_pattern} -> {self.from_pattern}', **reconstitute_kwargs)
+        return x
+
+
+class SiLU(Module):
     def __call__(self, x: Array, key: Optional[PRNGKey] = None) -> Array:
         return jax.nn.silu(x)
 
@@ -65,7 +110,7 @@ def merge_heads(x: Array) -> Array:
 
 class SelfAttentionBlock(Module):
     """
-    Reference: 
+    Reference:
     - https://github.com/nshepperd/jax-guided-diffusion/blob/2320ce05aa2d6ea83234469ef86d36481ef962ea/lib/unet.py#L231
     """
     wi: Array
@@ -77,21 +122,21 @@ class SelfAttentionBlock(Module):
 
     def __init__(
         self,
-        channels: int,  # input channels effectively the `head_dim`
+        head_dim: int,
         *, key: PRNGKey,
         num_heads: int,
-        num_groups: Optional[int] = 32,
     ):
         key, ikey, aokey = jax.random.split(key, 3)
-        self.scale = math.sqrt(channels) ** -1.0  # scaled dot-product attention factor: 1 / √dₖ
+        self.scale = math.sqrt(head_dim) ** -1.0  # scaled dot-product attention factor: 1 / √dₖ
         self.num_heads = num_heads
-        self.norm = GroupNorm(num_groups, channels)
+        self.norm = LayerNorm(head_dim)
 
         # Fused input projection weights: (Wᵢq, Wᵢᵏ, Wᵢᵛ)
-        self.fused_dims = 3 * (num_heads * channels,)
-        self.wi = jax.random.normal(ikey, (channels, sum(self.fused_dims)))
+        self.fused_dims = 3 * (num_heads * head_dim,)
+        self.wi = jax.random.normal(ikey, (head_dim, sum(self.fused_dims)))
+
         # Output projection weights
-        self.attn_wo = jax.random.normal(aokey, (num_heads * channels, channels))
+        self.attn_wo = jax.random.normal(aokey, (num_heads * head_dim, head_dim))
 
     def __call__(
         self,
@@ -100,21 +145,15 @@ class SelfAttentionBlock(Module):
         time: Optional[Array] = None,
     ) -> Float[Array, "b c e"]:
         """
-        Notation:
-            - `seq_len` is the collapsed spatial dims and
-            - `head_dim` is the input `channels`.
         Args:
-            time: Unused time arg for sequential processing.
+            time: Unused time arg for `nn.Sequential` processing.
             bias: Attention similarity score bias, e.g. a causal mask.
         """
-        b, c, *spatial = x.shape
-        x = x.reshape(b, c, -1)
-
         # Pre-Norm
         units = self.norm(x)
 
         # Input Projection
-        in_proj = jnp.einsum("... i j, i k -> ... j k", units, self.wi)
+        in_proj = units @ self.wi # jnp.einsum("... i j, i k -> ... j k", units, self.wi)
         q, k, v = split_fused_proj(in_proj, self.fused_dims)
 
         # Attention
@@ -125,7 +164,7 @@ class SelfAttentionBlock(Module):
 
         # Output projection
         attn_out = concat @ self.attn_wo  # [..., seq_len, head_dim]
-        attn_out = attn_out.reshape(x.shape)
+        attn_out = attn_out
 
         return x + attn_out
 
@@ -270,6 +309,9 @@ class DownsampleBlock(Module):
 
 
 class ResidualTimeBlock(Module):
+    """
+    TODO: Add `dropout` support.
+    """
     block1: nn.Sequential
     block2: nn.Sequential
     shortcut: Module
@@ -282,7 +324,7 @@ class ResidualTimeBlock(Module):
         time_channels: int,
         *, key: PRNGKey,
         num_groups: Optional[int] = 32,
-        dropout: Optional[float] = 0.0,
+        # dropout: Optional[float] = 0.0,
     ):
         key, lin_key, *conv_keys = jax.random.split(key, 4)
         self.time_proj = (
@@ -307,7 +349,6 @@ class ResidualTimeBlock(Module):
         self.block2 = nn.Sequential([
             GroupNorm(num_groups, out_channels),
             SiLU(),
-            # TODO: Add `dropout` support.
             # nn.Dropout(dropout),
             Conv1d(
                 out_channels,
@@ -376,11 +417,14 @@ class DBlock(Module):
                 if attn_resolutions[i_level] is True:
                     key, dsab_key = jax.random.split(key)
                     blocks.append(
-                        SelfAttentionBlock(
-                            out_channels,
-                            num_heads=num_heads,
-                            num_groups=num_groups,
-                            key=dsab_key,
+                        EinopsToAndFrom(
+                            from_pattern="b c e",
+                            to_pattern="b e c",
+                            module=SelfAttentionBlock(
+                                head_dim=out_channels,
+                                num_heads=num_heads,
+                                key=dsab_key,
+                            )
                         )
                     )
                 in_channels = out_channels
@@ -432,11 +476,14 @@ class UBlock(Module):
                 if attn_resolutions[i_level] is True:
                     key, usab_key = jax.random.split(key)
                     blocks.append(
-                        SelfAttentionBlock(
-                            out_channels,
-                            num_heads=num_heads,
-                            num_groups=num_groups,
-                            key=usab_key,
+                        EinopsToAndFrom(
+                            from_pattern="b c e",
+                            to_pattern="b e c",
+                            module=SelfAttentionBlock(
+                                head_dim=out_channels,
+                                num_heads=num_heads,
+                                key=usab_key,
+                            )
                         )
                     )
                 in_channels = out_channels
@@ -470,11 +517,14 @@ class MBlock(Module):
             ResidualTimeBlock(
                 channels, channels, time_channels, num_groups=num_groups, key=rtb1_key
             ),
-            SelfAttentionBlock(
-                channels,
-                num_heads=num_heads,
-                num_groups=num_groups,
-                key=sab_key,
+            EinopsToAndFrom(
+                from_pattern="b c e",
+                to_pattern="b e c",
+                module=SelfAttentionBlock(
+                    head_dim=channels,
+                    num_heads=num_heads,
+                    key=sab_key,
+                )
             ),
             ResidualTimeBlock(
                 channels, channels, time_channels, num_groups=num_groups, key=rtb2_key

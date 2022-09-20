@@ -320,3 +320,19 @@ class GroupNorm(Module):
             bias = left_broadcast_to(self.bias, out.shape)
             out = weight * out + bias
         return out
+
+
+class LayerNorm(Module):
+    gamma: jnp.ndarray
+    eps: float = static_field()
+
+    def __init__(self, dim, eps = 1e-5):
+        self.gamma = jnp.ones((dim,))
+        self.eps = eps
+
+    def __call__(self, x):
+        mean = jnp.mean(x, axis=-1, keepdims=True)
+        mean_of_squares = jnp.mean(jnp.square(x), axis=-1, keepdims=True)
+        variance = mean_of_squares - jnp.square(mean)
+        inv = jax.lax.rsqrt(variance + self.eps)
+        return inv * (x - mean) * self.gamma
