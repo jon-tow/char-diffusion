@@ -26,11 +26,6 @@ class RMSNorm(Module):
     eps: float = static_field()
 
     def __init__(self, dim: int, eps: float = 1e-5):
-        """
-        Args:
-            dim: Dimensionality of input array.
-            eps: Tiny epsilon value for stability.
-        """
         self.gain = jnp.ones((dim,))
         # Scalar forces norm into √(dim)-scaled unit sphere (normalization coef).
         self.scale = dim ** 0.5
@@ -45,7 +40,6 @@ class RMSNorm(Module):
 
 class EinopsToAndFrom(Module):
     """Rearranges inputs to and from a pattern.
-
     Reference:
     - https://github.com/lucidrains/einops-exts/blob/main/einops_exts/torch.py
     """
@@ -61,10 +55,10 @@ class EinopsToAndFrom(Module):
 
     def __call__(self, x, **kwargs):
         shape = x.shape
-        reconstitute_kwargs = dict(tuple(zip(self.from_pattern.split(' '), shape)))
+        remat_kwargs = dict(tuple(zip(self.from_pattern.split(' '), shape)))
         x = rearrange(x, f'{self.from_pattern} -> {self.to_pattern}')
         x = self.module(x, **kwargs)
-        x = rearrange(x, f'{self.to_pattern} -> {self.from_pattern}', **reconstitute_kwargs)
+        x = rearrange( x, f'{self.to_pattern} -> {self.from_pattern}', **remat_kwargs)
         return x
 
 
@@ -97,7 +91,7 @@ def split_fused_proj(proj: Array, dims: Shape) -> Tuple[Array, ...]:
 
 
 def split_heads(x: Array, num_heads: int) -> Array:
-    """Splits the `n` input heads."""
+    """Splits the input heads."""
     # s = seq_len, h = num_heads, d = head_dim
     return rearrange(x, "... s (h d) -> ... h s d", h=num_heads)
 
@@ -144,16 +138,11 @@ class SelfAttentionBlock(Module):
         key: Optional[PRNGKey] = None,
         time: Optional[Array] = None,
     ) -> Float[Array, "b c e"]:
-        """
-        Args:
-            time: Unused time arg for `nn.Sequential` processing.
-            bias: Attention similarity score bias, e.g. a causal mask.
-        """
         # Pre-Norm
         units = self.norm(x)
 
         # Input Projection
-        in_proj = units @ self.wi # jnp.einsum("... i j, i k -> ... j k", units, self.wi)
+        in_proj = units @ self.wi
         q, k, v = split_fused_proj(in_proj, self.fused_dims)
 
         # Attention
@@ -174,11 +163,6 @@ class SinusoidalTimeEmbedding(Module):
     max_period: int = static_field()
 
     def __init__(self, dim: int, max_period: int = 10_000):
-        """
-        Args:
-            dim: The embedding dimension.
-            max_period: freq = 1 / max_period
-        """
         self.dim = dim
         self.max_period = max_period
 
@@ -189,9 +173,9 @@ class SinusoidalTimeEmbedding(Module):
         Args:
             time: Batch of continuous time steps: [0, 1)
         """
-        # "Attent is All You Need" Tensor2Tensor pos encoding version:
+        # "Attent is All You Need" Tensor2Tensor position encoding version.
         # See: https://github.com/tensorflow/tensor2tensor/pull/177
-        # Taken from the Magenta folks 🎶 https://github.com/magenta/music-spectrogram-diffusion/blob/ddfeedac58de6fce6872bf8a547df3c1706d0486/music_spectrogram_diffusion/models/diffusion/diffusion_utils.py#L69
+        # Taken from the Magenta folks 🎶: https://github.com/magenta/music-spectrogram-diffusion/blob/ddfeedac58de6fce6872bf8a547df3c1706d0486/music_spectrogram_diffusion/models/diffusion/diffusion_utils.py#L69
         min_timescale = 1.0
         max_timescale = self.max_period
         num_timescales = float(self.dim // 2)
@@ -206,8 +190,11 @@ class SinusoidalTimeEmbedding(Module):
         return signal
 
 
-def TimeConditionalEmbedding(in_channels: int, key: PRNGKey, time_channels: Optional[int] = None):
-    """`time_channels` is an unused arg to satisfy time-based conditioning API"""
+def TimeConditionalEmbedding(
+    in_channels: int,
+    key: PRNGKey,
+    time_channels: Optional[int] = None
+) -> nn.Sequential:
     key, tlin1_key, tlin2_key = jax.random.split(key, 3)
     if time_channels is None:
         time_channels = in_channels * 4
@@ -232,10 +219,6 @@ class Upsample(Module):
         *,
         mode: Optional[str] = "nearest",
     ):
-        """
-        Args:
-            axis: The channel axis in channel-first data format.
-        """
         self.scale_factor = scale_factor
         self.mode = mode
 
@@ -430,7 +413,9 @@ class DBlock(Module):
                 in_channels = out_channels
             if i_level != num_resolutions - 1:
                 key, ds_key = jax.random.split(key)
-                blocks.append(DownsampleBlock(in_channels, out_channels, key=ds_key))
+                blocks.append(
+                    DownsampleBlock(in_channels, out_channels, key=ds_key)
+                )
                 in_channels = out_channels
         self.blocks = blocks
         self.out_channels = out_channels
@@ -489,7 +474,9 @@ class UBlock(Module):
                 in_channels = out_channels
             if i_level != 0:
                 key, us_key = jax.random.split(key)
-                blocks.append(UpsampleBlock1d(out_channels, out_channels, key=us_key))
+                blocks.append(
+                    UpsampleBlock1d(out_channels, out_channels, key=us_key)
+                )
                 in_channels = out_channels
         self.blocks = blocks
         self.out_channels = out_channels
@@ -515,7 +502,11 @@ class MBlock(Module):
         key, rtb1_key, rtb2_key, sab_key = jax.random.split(key, 4)
         self.blocks = [
             ResidualTimeBlock(
-                channels, channels, time_channels, num_groups=num_groups, key=rtb1_key
+                channels,
+                channels,
+                time_channels,
+                num_groups=num_groups,
+                key=rtb1_key,
             ),
             EinopsToAndFrom(
                 from_pattern="b c e",
@@ -527,7 +518,11 @@ class MBlock(Module):
                 )
             ),
             ResidualTimeBlock(
-                channels, channels, time_channels, num_groups=num_groups, key=rtb2_key
+                channels,
+                channels,
+                time_channels,
+                num_groups=num_groups,
+                key=rtb2_key,
             ),
         ]
 

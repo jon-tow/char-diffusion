@@ -123,7 +123,7 @@ def train(config: mlc.ConfigDict):
             wandb.log({"train/loss": loss}, step=step)
             info = f"Step: {step}/{config.train.max_steps} | Loss: {loss:.5f}"
             logger.info(info)
-        # Evaluate vqvae and log the validation stats.
+        # Evaluate and log the validation stats.
         if step % config.train.eval_every == 0:
             key, valid_key = jax.random.split(key)
             valid_batch = next(valid_iter)
@@ -161,10 +161,10 @@ def train(config: mlc.ConfigDict):
 
 if __name__ == "__main__":
     config = configs.char_diffusion_base_config(
-        dataset_path="./tmp/war_and_peace.txt", #"./tmp/linux.txt",
+        dataset_path="./data/war_and_peace.txt",
         id=np.random.randint(0, 1e5),
     )
-    config.wandb_entity = "jon-tow"
+    config.wandb_entity = ""
 
     os.makedirs(config.output_dir, exist_ok=True)
 

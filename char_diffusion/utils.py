@@ -34,20 +34,8 @@ def flatten_dict(d: dict, parent_key: Optional[str] = "") -> dict:
     return flat_d
 
 
-def save(path: str, tree: PyTree):
-    """Saves an `equinox` model to the specified file path."""
-    if not os.path.exists(path):
-        os.makedirs(Path(path).parent, exist_ok=True)
-        Path(path).touch()
-    eqx.tree_serialise_leaves(path, tree)
-
-
-def load_state_dict(path: str, tree: PyTree) -> Tuple[PyTree, PyTree, int]:
-    return eqx.tree_deserialise_leaves(path, tree, filter_spec=default_deserialise_filter_spec)
-
-
 def default_deserialise_filter_spec(
-    f, x: Any, allow_pickle: Optional[bool] = True
+    f: str, x: Any, allow_pickle: Optional[bool] = True
 ) -> Any:
     """Override default deserialise filter spec to allow loading pickled arrays."""
     if isinstance(x, jnp.ndarray):
@@ -75,6 +63,23 @@ def default_deserialise_filter_spec(
         return y
     else:
         return x
+
+
+def load_state_dict(
+    path: str,
+    tree: PyTree,
+    filter_spec: Optional[Callable] = default_deserialise_filter_spec,
+) -> Tuple[PyTree, PyTree, int]:
+    """Load a PyTree from the specified file path."""
+    return eqx.tree_deserialise_leaves(path, tree, filter_spec=filter_spec)
+
+
+def save(path: str, tree: PyTree):
+    """Saves a PyTree to the specified file path."""
+    if not os.path.exists(path):
+        os.makedirs(Path(path).parent, exist_ok=True)
+        Path(path).touch()
+    eqx.tree_serialise_leaves(path, tree)
 
 
 # Dataset utils

@@ -98,7 +98,7 @@ def cosine_alpha_bar(
 
 def cosine_alpha_bar_schedule(
     offset: Optional[float] = 0.0002,
-) -> Array:
+) -> Callable:
     def scheduler(num_steps: float):
         return cosine_alpha_bar(time=num_steps, offset=offset)
 
@@ -109,7 +109,7 @@ def sqrt_alpha_bar(
     time: float,
     # max_t: int,  # TODO: Use if time is NOT in [0, 1)
     offset: Optional[float] = 1e-4,
-):
+) -> Array:
     """Square-root noise schedule - useful for language modeling.
 
     Reference:
@@ -127,7 +127,7 @@ def sqrt_alpha_bar(
 
 def sqrt_alpha_bar_schedule(
     offset: Optional[float] = 1e-4,
-) -> Array:
+) -> Callable:
     def scheduler(num_steps: float):
         return sqrt_alpha_bar(time=num_steps, offset=offset)
 

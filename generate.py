@@ -53,7 +53,7 @@ def generate(config: mlc.ConfigDict):
         num_steps=config.model.num_gen_steps,
         bit_width=config.model.bit_width,
         key=gen_key,
-        time_delta=2.0,
+        time_delta=config.model.time_delta,
     )
     generation = generation.squeeze(1).device_buffer.to_py()
     print(f"Generation IDs:\n{generation}")
