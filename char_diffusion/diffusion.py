@@ -227,11 +227,12 @@ class CharDiffusion:
         return reduce(loss, "b ... -> b", "mean")
 
     def corrupt(self, x: Array, time: float, key: PRNGKey) -> Array:
-        """q sampler: q(xₜ | xₒ) ~ N(xₒ * Π(√(1-β)), 1 - Π(1 - β))
-        Arbitrary time sampler for forward diffusion processing (corruption).
+        """q sampler: q(xₜ | xₒ) ~ N(xₒ * √ᾱₜ, (1 - ᾱₜ)I)
+        Arbitrary time q-sampler for forward diffusion processing (corruption).
 
         Reference:
-        - Ho et al. 2020.
+        - Ho et al. "Denoising Diffusion Probabilistic Models". 2020.
+            https://arxiv.org/abs/2006.11239
         """
         key, nkey = jax.random.split(key)
         noise = jax.random.normal(nkey, x.shape)  # ϵ
@@ -296,6 +297,8 @@ class CharDiffusion:
             )
 
             # Estimate x at time_next
+            # TODO: Add a `step_fn: Callable` argument to `generate` allowing
+            # for custom diffusion sampling steps (ddpm/ddim).
             x_t_next = self.ddim_step(x_t_prev, pred, time_now, time_next)
             return pred, x_t_next
 
@@ -307,7 +310,13 @@ class CharDiffusion:
         x_int = bit_decode(pred, bit_width)
         return x_int
 
-    def ddim_step(self, x_t, x_pred, time_now, time_next) -> Array:
+    def ddim_step(
+        self,
+        x_t: Array,
+        x_pred: Array,
+        time_now: Array,
+        time_next: Array,
+    ) -> Array:
         """Denoising diffusion implicit model step with η = 0
         Estimates x at time_next with the DDIM updating rule
         References:

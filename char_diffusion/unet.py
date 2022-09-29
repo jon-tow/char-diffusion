@@ -116,21 +116,21 @@ class SelfAttentionBlock(Module):
 
     def __init__(
         self,
-        head_dim: int,
+        dim: int,
         *, key: PRNGKey,
         num_heads: int,
     ):
         key, ikey, aokey = jax.random.split(key, 3)
-        self.scale = math.sqrt(head_dim) ** -1.0  # scaled dot-product attention factor: 1 / √dₖ
+        self.scale = math.sqrt(dim) ** -1.0  # scaled dot-product attention factor: 1 / √dₖ
         self.num_heads = num_heads
-        self.norm = LayerNorm(head_dim)
+        self.norm = LayerNorm(dim)
 
         # Fused input projection weights: (Wᵢq, Wᵢᵏ, Wᵢᵛ)
-        self.fused_dims = 3 * (num_heads * head_dim,)
-        self.wi = jax.random.normal(ikey, (head_dim, sum(self.fused_dims)))
+        self.fused_dims = 3 * (num_heads * dim,)
+        self.wi = jax.random.normal(ikey, (dim, sum(self.fused_dims)))
 
         # Output projection weights
-        self.attn_wo = jax.random.normal(aokey, (num_heads * head_dim, head_dim))
+        self.attn_wo = jax.random.normal(aokey, (num_heads * dim, dim))
 
     def __call__(
         self,
@@ -146,15 +146,13 @@ class SelfAttentionBlock(Module):
         q, k, v = split_fused_proj(in_proj, self.fused_dims)
 
         # Attention
-        # [..., num_heads, seq_len, head_dim]
+        # [..., num_heads, seq_len, dim]
         q, k, v = map(partial(split_heads, num_heads=self.num_heads), (q, k, v))
         attn = multihead_attn(q, k, v, self.scale)
-        concat = merge_heads(attn)  # [..., seq_len, (num_heads * head_dim)]
+        concat = merge_heads(attn)  # [..., seq_len, (num_heads * dim)]
 
         # Output projection
-        attn_out = concat @ self.attn_wo  # [..., seq_len, head_dim]
-        attn_out = attn_out
-
+        attn_out = concat @ self.attn_wo  # [..., seq_len, dim]
         return x + attn_out
 
 
@@ -183,7 +181,7 @@ class SinusoidalTimeEmbedding(Module):
             num_timescales - 1.0
         )
         inv_timescales = min_timescale * jnp.exp(
-            jnp.arange(0, num_timescales) * -log_timescale_increment
+            jnp.arange(0, num_timescales, dtype=jnp.float32) * -log_timescale_increment
         )
         scaled_time = time[:, None] * inv_timescales[None, :] * 100.0
         signal = jnp.concatenate([jnp.sin(scaled_time), jnp.cos(scaled_time)], -1)
@@ -404,7 +402,7 @@ class DBlock(Module):
                             from_pattern="b c e",
                             to_pattern="b e c",
                             module=SelfAttentionBlock(
-                                head_dim=out_channels,
+                                dim=out_channels,
                                 num_heads=num_heads,
                                 key=dsab_key,
                             )
@@ -465,7 +463,7 @@ class UBlock(Module):
                             from_pattern="b c e",
                             to_pattern="b e c",
                             module=SelfAttentionBlock(
-                                head_dim=out_channels,
+                                dim=out_channels,
                                 num_heads=num_heads,
                                 key=usab_key,
                             )
@@ -512,7 +510,7 @@ class MBlock(Module):
                 from_pattern="b c e",
                 to_pattern="b e c",
                 module=SelfAttentionBlock(
-                    head_dim=channels,
+                    dim=channels,
                     num_heads=num_heads,
                     key=sab_key,
                 )

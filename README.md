@@ -21,6 +21,9 @@ __Step 50,000__
  y, and they, and be would gate the wive or were fine that the Mo
 ```
 
+See [**SED**: Self-Conditioned Embedding Diffusion for Text Generation](https://openreview.net/pdf?id=OpzV3lp3IMC) for a similar token-level word embedding implementation.
+
+
 
 ## Findings
 
