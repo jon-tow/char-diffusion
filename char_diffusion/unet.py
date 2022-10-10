@@ -107,8 +107,8 @@ class SelfAttentionBlock(Module):
     Reference:
     - https://github.com/nshepperd/jax-guided-diffusion/blob/2320ce05aa2d6ea83234469ef86d36481ef962ea/lib/unet.py#L231
     """
-    wi: Array
-    attn_wo: Array
+    fused_proj: Linear
+    attn_proj: Linear 
     norm: Module
     scale: float = static_field()
     num_heads: int = static_field()
@@ -127,10 +127,10 @@ class SelfAttentionBlock(Module):
 
         # Fused input projection weights: (Wᵢq, Wᵢᵏ, Wᵢᵛ)
         self.fused_dims = 3 * (num_heads * dim,)
-        self.wi = jax.random.normal(ikey, (dim, sum(self.fused_dims)))
+        self.fused_proj = Linear(dim, sum(self.fused_dims), key=ikey)
 
         # Output projection weights
-        self.attn_wo = jax.random.normal(aokey, (num_heads * dim, dim))
+        self.attn_proj = Linear(num_heads * dim, dim, key=aokey)
 
     def __call__(
         self,
@@ -142,8 +142,7 @@ class SelfAttentionBlock(Module):
         units = self.norm(x)
 
         # Input Projection
-        in_proj = units @ self.wi
-        q, k, v = split_fused_proj(in_proj, self.fused_dims)
+        q, k, v = split_fused_proj(self.fused_proj(units), self.fused_dims)
 
         # Attention
         # [..., num_heads, seq_len, dim]
@@ -152,7 +151,7 @@ class SelfAttentionBlock(Module):
         concat = merge_heads(attn)  # [..., seq_len, (num_heads * dim)]
 
         # Output projection
-        attn_out = concat @ self.attn_wo  # [..., seq_len, dim]
+        attn_out = self.attn_proj(concat)  # [..., seq_len, dim]
         return x + attn_out
 
 
@@ -181,7 +180,7 @@ class SinusoidalTimeEmbedding(Module):
             num_timescales - 1.0
         )
         inv_timescales = min_timescale * jnp.exp(
-            jnp.arange(0, num_timescales, dtype=jnp.float32) * -log_timescale_increment
+            jnp.arange(0, num_timescales) * -log_timescale_increment
         )
         scaled_time = time[:, None] * inv_timescales[None, :] * 100.0
         signal = jnp.concatenate([jnp.sin(scaled_time), jnp.cos(scaled_time)], -1)

@@ -242,11 +242,13 @@ class Linear(Module):
         wkey, bkey = jax.random.split(key, 2)
         lim = 1 / math.sqrt(in_features)
         self.weight = jax.random.uniform(
-            wkey, (in_features, out_features), minval=-lim, maxval=lim
+            wkey, (in_features, out_features),
+            minval=-lim, maxval=lim,
         )
         if use_bias:
             self.bias = jax.random.uniform(
-                bkey, (out_features,), minval=-lim, maxval=lim
+                bkey, (out_features,),
+                minval=-lim, maxval=lim,
             )
         else:
             self.bias = None
@@ -255,12 +257,14 @@ class Linear(Module):
         self.use_bias = use_bias
 
     def __call__(
-        self, inputs: Float[Array, "b i"], *, key: PRNGKey = None
-    ) -> Float[Array, "b o"]:
-        inputs = jnp.dot(inputs, self.weight)
+        self,
+        inputs: Float[Array, "... in"],
+        *, key: PRNGKey = None
+    ) -> Float[Array, "... out"]:
+        outputs = jnp.dot(inputs, self.weight)
         if self.bias is not None:
-            inputs = inputs + self.bias
-        return inputs
+            outputs = outputs + self.bias
+        return outputs
 
 
 class GroupNorm(Module):
@@ -330,9 +334,9 @@ class LayerNorm(Module):
         self.gamma = jnp.ones((dim,))
         self.eps = eps
 
-    def __call__(self, x):
-        mean = jnp.mean(x, axis=-1, keepdims=True)
-        mean_of_squares = jnp.mean(jnp.square(x), axis=-1, keepdims=True)
+    def __call__(self, inputs: Array) -> Array:
+        mean = jnp.mean(inputs, axis=-1, keepdims=True)
+        mean_of_squares = jnp.mean(jnp.square(inputs), axis=-1, keepdims=True)
         variance = mean_of_squares - jnp.square(mean)
         inv = jax.lax.rsqrt(variance + self.eps)
-        return inv * (x - mean) * self.gamma
+        return inv * (inputs - mean) * self.gamma

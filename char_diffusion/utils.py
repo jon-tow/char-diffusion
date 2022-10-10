@@ -166,7 +166,9 @@ def mkdir(*paths: List[str]) -> str:
 
 
 def init_logger(
-    logger: logging.Logger, output_dir: str, stdout_only=False
+    logger: logging.Logger,
+    output_dir: str,
+    stdout_only=False,
 ):
     stdout_handler = logging.StreamHandler(sys.stdout)
     handlers = [stdout_handler]
